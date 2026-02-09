@@ -241,6 +241,46 @@ public class CodeGenerator {
         throw new IllegalArgumentException("Unsupported return type: " + returnType);
     }
 
+    private String generateCppCode(String userCode, ProblemMetadata metadata) {
+        StringBuilder code = new StringBuilder();
+        code.append("#include <sstream>\n");
+        code.append("#include <iostream>\n");
+        code.append("#include <vector>\n");
+        code.append("#include <string>\n");
+        code.append("using namespace std;\n\n");
+
+        code.append(userCode).append("\n\n");
+
+        code.append("int main() {\n");
+
+        List<ProblemMetadata.Parameter> params = metadata.parameters();
+
+        for (ProblemMetadata.Parameter param : params) {
+            code.append(generateCppParameterParsing(param));
+        }
+
+        code.append("\n    Solution solution;\n");
+        code.append("    ");
+        if (!"void".equals(metadata.returnType())) {
+            code.append(convertToCppType(metadata.returnType())).append(" result = ");
+        }
+        code.append("solution.").append(metadata.methodName()).append("(");
+        code.append(params.stream()
+                .map(ProblemMetadata.Parameter::name)
+                .collect(Collectors.joining(", ")));
+        code.append(");\n\n");
+
+        if (!"void".equals(metadata.returnType())) {
+            code.append(generateCppOutputCode(metadata.returnType()));
+        }
+
+        code.append("\n    return 0;\n");
+        code.append("}\n");
+
+        log.debug("Generated C++ code:\n{}", code);
+        return code.toString();
+    }
+
     private String generateCppParameterParsing(ProblemMetadata.Parameter param) {
         String type = param.type();
         String name = param.name();
