@@ -274,4 +274,34 @@ public class CodeGenerator {
 
         throw new IllegalArgumentException("Unsupported parameter type: " + type);
     }
+
+
+    private String generateCppOutputCode(String returnType) {
+        if (returnType.equals("int")) {
+            return "    cout << result << endl;\n";
+        }
+        if (returnType.equals("String")) {
+            return "    cout << result << endl;\n";
+        }
+        if (returnType.equals("int[]")) {
+            return "    for (int i = 0; i < result.size(); i++) {\n" +
+                    "        if (i > 0) cout << \" \";\n" +
+                    "        cout << result[i];\n" +
+                    "    }\n" +
+                    "    cout << endl;\n";
+        }
+
+        if (returnType.equals("int[][]")) {
+            return "    cout << result.size() << \" \" << result[0].size() << endl;\n" +
+                    "    for (auto& row : result) {\n" +
+                    "        for (int val : row) {\n" +
+                    "            cout << val << \" \";\n" +
+                    "        }\n" +
+                    "        cout << endl;\n" +
+                    "    }\n";
+        }
+
+        throw new IllegalArgumentException("Unsupported return type: " + returnType);
+    }
+
 }
