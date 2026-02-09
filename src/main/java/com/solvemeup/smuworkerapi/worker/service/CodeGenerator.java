@@ -161,6 +161,36 @@ public class CodeGenerator {
         throw new IllegalArgumentException("Unsupported return type: " + returnType);
     }
 
+    private String generatePythonCode(String userCode, ProblemMetadata metadata) {
+        StringBuilder code = new StringBuilder();
+
+        code.append(userCode).append("\n\n");
+
+        code.append("if __name__ == '__main__':\n");
+        code.append("    import sys\n");
+        code.append("    input_lines = sys.stdin.read().strip().split('\\n')\n");
+        code.append("    line_idx = 0\n\n");
+
+        List<ProblemMetadata.Parameter> params = metadata.parameters();
+
+        for (ProblemMetadata.Parameter param : params) {
+            code.append(generatePythonParameterParsing(param));
+        }
+
+        code.append("\n    solution = Solution()\n");
+        code.append("    result = solution.").append(metadata.methodName()).append("(");
+        code.append(params.stream()
+                .map(ProblemMetadata.Parameter::name)
+                .collect(Collectors.joining(", ")));
+        code.append(")\n\n");
+
+        if (!"void".equals(metadata.returnType())) {
+            code.append(generatePythonOutputCode(metadata.returnType()));
+        }
+
+        log.debug("Generated Python code:\n{}", code);
+        return code.toString();
+    }
 
     private String generatePythonParameterParsing(ProblemMetadata.Parameter param) {
         String type = param.type();
