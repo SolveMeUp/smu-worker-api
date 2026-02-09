@@ -103,4 +103,29 @@ public class DockerExecutor {
 
         return containerId;
     }
+    private Integer waitForContainerWithTimeout(
+            String containerId,
+            int timeLimitMillis,
+            int testCaseNumber
+    ) throws InterruptedException, ExecutionException {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<Integer> future = executor.submit(() -> {
+                WaitContainerResultCallback callback = new WaitContainerResultCallback();
+                dockerClient.waitContainerCmd(containerId).exec(callback);
+                return callback.awaitStatusCode();
+            });
+
+            try {
+                return future.get(timeLimitMillis + 2000, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                log.warn("Test case {} exceeded time limit", testCaseNumber);
+                future.cancel(true);
+                return null;
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
 }
