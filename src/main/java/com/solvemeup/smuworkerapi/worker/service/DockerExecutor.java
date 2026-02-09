@@ -181,4 +181,54 @@ public class DockerExecutor {
             return 0;
         }
     }
+
+    private ExecutionResult determineResult(
+            Integer exitCode,
+            String output,
+            String error,
+            long executionTime,
+            int timeLimitMillis,
+            int memoryUsageKB,
+            int memoryLimitMB,
+            Language language
+    ) {
+        if (executionTime > timeLimitMillis) {
+            return new ExecutionResult(
+                    JudgeResult.TLE,
+                    output,
+                    error,
+                    (int) executionTime,
+                    memoryUsageKB
+            );
+        }
+
+        if (memoryUsageKB > (long) memoryLimitMB * 1024) {
+            return new ExecutionResult(
+                    JudgeResult.MLE,
+                    output,
+                    error,
+                    (int) executionTime,
+                    memoryUsageKB
+            );
+        }
+
+        if (exitCode == null || exitCode != 0) {
+            JudgeResult result = determineErrorType(error, language);
+            return new ExecutionResult(
+                    result,
+                    output,
+                    error,
+                    (int) executionTime,
+                    memoryUsageKB
+            );
+        }
+
+        return new ExecutionResult(
+                JudgeResult.AC,
+                output,
+                error,
+                (int) executionTime,
+                memoryUsageKB
+        );
+    }
 }
