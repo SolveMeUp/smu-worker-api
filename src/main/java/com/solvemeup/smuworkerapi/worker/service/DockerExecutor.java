@@ -6,7 +6,6 @@ import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.WaitContainerResultCallback;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.command.LogContainerResultCallback;
-import com.solvemeup.smuworkerapi.worker.config.DockerConfig;
 import com.solvemeup.smuworkerapi.worker.enums.JudgeResult;
 import com.solvemeup.smuworkerapi.worker.enums.Language;
 import lombok.RequiredArgsConstructor;
@@ -73,6 +72,7 @@ public class DockerExecutor {
             cleanupContainer(containerId);
         }
     }
+
     private String createAndStartContainer(
             Language language,
             String executableCode,
@@ -103,6 +103,7 @@ public class DockerExecutor {
 
         return containerId;
     }
+
     private Integer waitForContainerWithTimeout(
             String containerId,
             int timeLimitMillis,
@@ -128,6 +129,7 @@ public class DockerExecutor {
             executor.shutdownNow();
         }
     }
+
     private ContainerOutput collectContainerOutput(String containerId) throws InterruptedException {
         ByteArrayOutputStream stdout = new ByteArrayOutputStream();
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
@@ -151,6 +153,7 @@ public class DockerExecutor {
 
         return new ContainerOutput(stdoutStr, stderrStr);
     }
+
     private int getMemoryUsage(String containerId, int testCaseNumber) {
         try {
             CompletableFuture<Integer> memoryFuture = new CompletableFuture<>();
@@ -277,4 +280,53 @@ public class DockerExecutor {
             }
         };
     }
+
+    private DockerConfig getDockerConfig(Language language, String code, String input) {
+        String escapedCode = escapeCode(code);
+        String escapedInput = escapeCode(input != null ? input : "");
+
+        return switch (language) {
+            case JAVA -> new DockerConfig(
+                    "eclipse-temurin:17-jdk",
+                    new String[]{"sh", "-c",
+                            "echo '" + escapedCode + "' > Main.java && " +
+                                    "javac Main.java 2>&1 && " +
+                                    "echo '" + escapedInput + "' | java Main 2>&1"}
+            );
+            case PYTHON -> new DockerConfig(
+                    "python:3.11-slim",
+                    new String[]{"sh", "-c",
+                            "echo '" + escapedCode + "' > solution.py && " +
+                                    "echo '" + escapedInput + "' | python solution.py 2>&1"}
+            );
+            case CPP -> new DockerConfig(
+                    "gcc:13",
+                    new String[]{"sh", "-c",
+                            "echo '" + escapedCode + "' > solution.cpp && " +
+                                    "g++ -o solution solution.cpp 2>&1 && " +
+                                    "echo '" + escapedInput + "' | ./solution 2>&1"}
+            );
+        };
+    }
+
+    private String escapeCode(String code) {
+        return code
+                .replace("\\", "\\\\")
+                .replace("'", "'\\''")
+                .replace("$", "\\$")
+                .replace("`", "\\`");
+    }
+
+    public record ExecutionResult(
+            JudgeResult status,
+            String output,
+            String error,
+            int executionTimeMillis,
+            int memoryUsageKB
+    ) {}
+
+    private record DockerConfig(String image, String[] command) {}
+
+    private record ContainerOutput(String stdout, String stderr) {}
+
 }
