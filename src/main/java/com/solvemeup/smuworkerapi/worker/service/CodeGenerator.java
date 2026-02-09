@@ -194,4 +194,20 @@ public class CodeGenerator {
         throw new IllegalArgumentException("Unsupported parameter type: " + type);
     }
 
+    private String generatePythonOutputCode(String returnType) {
+        if (returnType.equals("int") || returnType.equals("String")) {
+            return "    print(result)\n";
+        }
+        if (returnType.equals("int[]")) {
+            return "    print(' '.join(map(str, result)))\n";
+        }
+
+        if (returnType.equals("int[][]")) {
+            return "    print(len(result), len(result[0]))\n" +
+                    "    for row in result:\n" +
+                    "        print(' '.join(map(str, row)))\n";
+        }
+
+        throw new IllegalArgumentException("Unsupported return type: " + returnType);
+    }
 }
