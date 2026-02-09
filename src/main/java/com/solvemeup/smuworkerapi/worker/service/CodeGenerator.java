@@ -161,4 +161,37 @@ public class CodeGenerator {
         throw new IllegalArgumentException("Unsupported return type: " + returnType);
     }
 
+
+    private String generatePythonParameterParsing(ProblemMetadata.Parameter param) {
+        String type = param.type();
+        String name = param.name();
+
+        if (type.equals("int")) {
+            return "    " + name + " = int(input_lines[line_idx].split()[0])\n" +
+                    "    line_idx += 1\n";
+        }
+        if (type.equals("String")) {
+            return "    " + name + " = input_lines[line_idx]\n" +
+                    "    line_idx += 1\n";
+        }
+        if (type.equals("int[]")) {
+            return "    " + name + " = list(map(int, input_lines[line_idx].split()))\n" +
+                    "    line_idx += 1\n";
+        }
+
+        if (type.equals("int[][]")) {
+            return "    tokens = input_lines[line_idx].split()\n" +
+                    "    rows = int(tokens[0])\n" +
+                    "    cols = int(tokens[1])\n" +
+                    "    line_idx += 1\n" +
+                    "    " + name + " = []\n" +
+                    "    for i in range(rows):\n" +
+                    "        row = list(map(int, input_lines[line_idx].split()))\n" +
+                    "        " + name + ".append(row)\n" +
+                    "        line_idx += 1\n";
+        }
+
+        throw new IllegalArgumentException("Unsupported parameter type: " + type);
+    }
+
 }
