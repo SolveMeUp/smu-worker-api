@@ -240,4 +240,38 @@ public class CodeGenerator {
 
         throw new IllegalArgumentException("Unsupported return type: " + returnType);
     }
+
+    private String generateCppParameterParsing(ProblemMetadata.Parameter param) {
+        String type = param.type();
+        String name = param.name();
+
+        if (type.equals("int")) {
+            return "    int " + name + ";\n" +
+                    "    cin >> " + name + ";\n";
+        }
+        if (type.equals("String")) {
+            return "    string " + name + ";\n" +
+                    "    getline(cin, " + name + ");\n";
+        }
+        if (type.equals("int[]")) {
+            return "    string line_" + name + ";\n" +
+                    "    getline(cin, line_" + name + ");\n" +
+                    "    istringstream iss_" + name + "(line_" + name + ");\n" +
+                    "    vector<int> " + name + ";\n" +
+                    "    { int val; while (iss_" + name + " >> val) " + name + ".push_back(val); }\n";
+        }
+
+        if (type.equals("int[][]")) {
+            return "    int rows_" + name + ", cols_" + name + ";\n" +
+                    "    cin >> rows_" + name + " >> cols_" + name + ";\n" +
+                    "    vector<vector<int>> " + name + "(rows_" + name + ", vector<int>(cols_" + name + "));\n" +
+                    "    for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                    "        for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                    "            cin >> " + name + "[i][j];\n" +
+                    "        }\n" +
+                    "    }\n";
+        }
+
+        throw new IllegalArgumentException("Unsupported parameter type: " + type);
+    }
 }
