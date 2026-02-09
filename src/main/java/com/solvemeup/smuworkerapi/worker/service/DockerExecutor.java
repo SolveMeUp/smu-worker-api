@@ -231,4 +231,50 @@ public class DockerExecutor {
                 memoryUsageKB
         );
     }
+
+    private void cleanupContainer(String containerId) {
+        if (containerId == null) {
+            return;
+        }
+
+        try {
+            dockerClient.removeContainerCmd(containerId)
+                    .withForce(true)
+                    .exec();
+            log.debug("Container removed: {}", containerId.substring(0, 12));
+        } catch (Exception e) {
+            log.error("Failed to remove container {}: {}", containerId.substring(0, 12), e.getMessage());
+        }
+    }
+
+    private JudgeResult determineErrorType(String error, Language language) {
+        if (error == null) {
+            return JudgeResult.RE;
+        }
+
+        String lowerError = error.toLowerCase();
+
+        return switch (language) {
+            case JAVA -> {
+                if (lowerError.contains("error:") &&
+                        (lowerError.contains(".java:") || lowerError.contains("cannot find symbol"))) {
+                    yield JudgeResult.CE;
+                }
+                yield JudgeResult.RE;
+            }
+            case CPP -> {
+                if (lowerError.contains("error:") &&
+                        (lowerError.contains("compilation terminated") || lowerError.contains("expected"))) {
+                    yield JudgeResult.CE;
+                }
+                yield JudgeResult.RE;
+            }
+            case PYTHON -> {
+                if (lowerError.contains("syntaxerror") || lowerError.contains("indentationerror")) {
+                    yield JudgeResult.CE;
+                }
+                yield JudgeResult.RE;
+            }
+        };
+    }
 }
