@@ -128,4 +128,27 @@ public class DockerExecutor {
             executor.shutdownNow();
         }
     }
+    private ContainerOutput collectContainerOutput(String containerId) throws InterruptedException {
+        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+
+        dockerClient.logContainerCmd(containerId)
+                .withStdOut(true)
+                .withStdErr(true)
+                .exec(new LogContainerResultCallback() {
+                    @Override
+                    public void onNext(Frame frame) {
+                        if (frame.getStreamType() == StreamType.STDOUT) {
+                            stdout.writeBytes(frame.getPayload());
+                        } else if (frame.getStreamType() == StreamType.STDERR) {
+                            stderr.writeBytes(frame.getPayload());
+                        }
+                    }
+                }).awaitCompletion();
+
+        String stdoutStr = stdout.toString(StandardCharsets.UTF_8);
+        String stderrStr = stderr.toString(StandardCharsets.UTF_8);
+
+        return new ContainerOutput(stdoutStr, stderrStr);
+    }
 }
