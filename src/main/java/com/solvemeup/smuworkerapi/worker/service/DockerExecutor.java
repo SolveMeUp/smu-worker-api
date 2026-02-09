@@ -151,4 +151,34 @@ public class DockerExecutor {
 
         return new ContainerOutput(stdoutStr, stderrStr);
     }
+    private int getMemoryUsage(String containerId, int testCaseNumber) {
+        try {
+            CompletableFuture<Integer> memoryFuture = new CompletableFuture<>();
+
+            dockerClient.statsCmd(containerId)
+                    .withNoStream(true)
+                    .exec(new ResultCallback.Adapter<com.github.dockerjava.api.model.Statistics>() {
+                        @Override
+                        public void onNext(com.github.dockerjava.api.model.Statistics stats) {
+                            if (stats.getMemoryStats() != null && stats.getMemoryStats().getUsage() != null) {
+                                int memoryKB = (int) (stats.getMemoryStats().getUsage() / 1024);
+                                memoryFuture.complete(memoryKB);
+                            } else {
+                                memoryFuture.complete(0);
+                            }
+                        }
+
+                        @Override
+                        public void onError(Throwable throwable) {
+                            memoryFuture.complete(0);
+                        }
+                    });
+
+            return memoryFuture.get(3, TimeUnit.SECONDS);
+
+        } catch (Exception e) {
+            log.warn("Failed to get memory stats for test case {}: {}", testCaseNumber, e.getMessage());
+            return 0;
+        }
+    }
 }
