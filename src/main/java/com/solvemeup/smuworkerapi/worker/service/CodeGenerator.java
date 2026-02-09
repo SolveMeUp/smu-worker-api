@@ -12,6 +12,14 @@ import java.util.stream.Collectors;
 @Service
 public class CodeGenerator {
 
+    public String generateExecutableCode(Language language, String userCode, ProblemMetadata metadata) {
+        return switch (language) {
+            case JAVA -> generateJavaCode(userCode, metadata);
+            case PYTHON -> generatePythonCode(userCode, metadata);
+            case CPP -> generateCppCode(userCode, metadata);
+        };
+    }
+
     private String generateJavaCode(String userCode, ProblemMetadata metadata) {
         StringBuilder code = new StringBuilder();
 
@@ -110,7 +118,6 @@ public class CodeGenerator {
 
         throw new IllegalArgumentException("Unsupported parameter type: " + type);
     }
-
 
     private String generateJavaOutputCode(String returnType) {
         StringBuilder code = new StringBuilder();
@@ -315,7 +322,6 @@ public class CodeGenerator {
         throw new IllegalArgumentException("Unsupported parameter type: " + type);
     }
 
-
     private String generateCppOutputCode(String returnType) {
         if (returnType.equals("int")) {
             return "    cout << result << endl;\n";
@@ -344,4 +350,16 @@ public class CodeGenerator {
         throw new IllegalArgumentException("Unsupported return type: " + returnType);
     }
 
+    private String convertToCppType(String javaType) {
+        return switch (javaType) {
+            case "int" -> "int";
+            case "long" -> "long long";
+            case "double" -> "double";
+            case "String" -> "string";
+            case "int[]" -> "vector<int>";
+            case "long[]" -> "vector<long long>";
+            case "int[][]" -> "vector<vector<int>>";
+            default -> throw new IllegalArgumentException("Unsupported type: " + javaType);
+        };
+    }
 }
