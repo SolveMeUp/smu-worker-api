@@ -12,6 +12,46 @@ import java.util.stream.Collectors;
 @Service
 public class CodeGenerator {
 
+    private String generateJavaCode(String userCode, ProblemMetadata metadata) {
+        StringBuilder code = new StringBuilder();
+
+        code.append("import java.util.*;\n");
+        code.append("import java.io.*;\n\n");
+
+        code.append(userCode).append("\n\n");
+
+        code.append("public class Main {\n");
+        code.append("    public static void main(String[] args) {\n");
+        code.append("        Scanner sc = new Scanner(System.in);\n");
+        code.append("        Solution solution = new Solution();\n\n");
+
+        List<ProblemMetadata.Parameter> params = metadata.parameters();
+        for (ProblemMetadata.Parameter param : params) {
+            code.append(generateJavaParameterParsing(param));
+        }
+
+        code.append("\n        ");
+        if (!"void".equals(metadata.returnType())) {
+            code.append(metadata.returnType()).append(" result = ");
+        }
+        code.append("solution.").append(metadata.methodName()).append("(");
+        code.append(params.stream()
+                .map(ProblemMetadata.Parameter::name)
+                .collect(Collectors.joining(", ")));
+        code.append(");\n\n");
+
+        if (!"void".equals(metadata.returnType())) {
+            code.append(generateJavaOutputCode(metadata.returnType()));
+        }
+
+        code.append("        sc.close();\n");
+        code.append("    }\n");
+        code.append("}\n");
+
+        log.debug("Generated Java code:\n{}", code);
+        return code.toString();
+    }
+
     private String generateJavaParameterParsing(ProblemMetadata.Parameter param) {
         String type = param.type();
         String name = param.name();
