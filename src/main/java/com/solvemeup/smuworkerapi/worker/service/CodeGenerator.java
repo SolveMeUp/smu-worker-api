@@ -70,4 +70,55 @@ public class CodeGenerator {
 
         throw new IllegalArgumentException("Unsupported parameter type: " + type);
     }
+
+
+    private String generateJavaOutputCode(String returnType) {
+        StringBuilder code = new StringBuilder();
+
+        if (returnType.equals("int") || returnType.equals("long") ||
+                returnType.equals("double") || returnType.equals("String")) {
+            code.append("        System.out.println(result);\n");
+            return code.toString();
+        }
+
+        if (returnType.equals("int[]")) {
+            code.append("        for (int i = 0; i < result.length; i++) {\n");
+            code.append("            if (i > 0) System.out.print(\" \");\n");
+            code.append("            System.out.print(result[i]);\n");
+            code.append("        }\n");
+            code.append("        System.out.println();\n");
+            return code.toString();
+        }
+
+        if (returnType.equals("long[]")) {
+            code.append("        for (int i = 0; i < result.length; i++) {\n");
+            code.append("            if (i > 0) System.out.print(\" \");\n");
+            code.append("            System.out.print(result[i]);\n");
+            code.append("        }\n");
+            code.append("        System.out.println();\n");
+            return code.toString();
+        }
+
+        if (returnType.equals("String[]")) {
+            code.append("        System.out.println(result.length);\n");
+            code.append("        for (String val : result) {\n");
+            code.append("            System.out.println(val);\n");
+            code.append("        }\n");
+            return code.toString();
+        }
+
+        if (returnType.equals("int[][]")) {
+            code.append("        System.out.println(result.length + \" \" + result[0].length);\n");
+            code.append("        for (int[] row : result) {\n");
+            code.append("            for (int val : row) {\n");
+            code.append("                System.out.print(val + \" \");\n");
+            code.append("            }\n");
+            code.append("            System.out.println();\n");
+            code.append("        }\n");
+            return code.toString();
+        }
+
+        throw new IllegalArgumentException("Unsupported return type: " + returnType);
+    }
+
 }
