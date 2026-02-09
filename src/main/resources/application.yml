@@ -1,0 +1,24 @@
+server:
+  port: ${WORKER_PORT}
+
+spring:
+  application:
+    name: grading-worker
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    listener:
+      simple:
+        acknowledge-mode: auto
+        prefetch: ${RABBITMQ_PEFETCH}
+
+judge:
+  docker:
+    cleanup-timeout: ${DOCKER_TIMEOUT}
+
+logging:
+  level:
+    com.solvemeup.worker: INFO
+    com.github.dockerjava: WARN
