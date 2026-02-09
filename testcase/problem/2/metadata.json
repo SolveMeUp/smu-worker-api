@@ -1,0 +1,8 @@
+{
+  "methodName": "solution",
+  "returnType": "int",
+  "parameters": [
+    {"name": "a", "type": "int"},
+    {"name": "b", "type": "int"}
+  ]
+}

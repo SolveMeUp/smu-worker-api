@@ -1,0 +1,7 @@
+{
+  "methodName": "solution",
+  "returnType": "int[]",
+  "parameters": [
+    {"name": "array", "type": "int[]"}
+  ]
+}
