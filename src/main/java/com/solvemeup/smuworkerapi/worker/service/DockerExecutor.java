@@ -6,6 +6,7 @@ import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.WaitContainerResultCallback;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.command.LogContainerResultCallback;
+import com.solvemeup.smuworkerapi.worker.config.DockerConfig;
 import com.solvemeup.smuworkerapi.worker.enums.JudgeResult;
 import com.solvemeup.smuworkerapi.worker.enums.Language;
 import lombok.RequiredArgsConstructor;
@@ -71,5 +72,35 @@ public class DockerExecutor {
         } finally {
             cleanupContainer(containerId);
         }
+    }
+    private String createAndStartContainer(
+            Language language,
+            String executableCode,
+            String input,
+            int memoryLimitMB
+    ) {
+        DockerConfig config = getDockerConfig(language, executableCode, input);
+
+        HostConfig hostConfig = HostConfig.newHostConfig()
+                .withMemory((long) memoryLimitMB * 1024 * 1024)
+                .withMemorySwap((long) memoryLimitMB * 1024 * 1024)
+                .withCpuQuota(100000L)
+                .withCpuPeriod(100000L)
+                .withNetworkMode("none")
+                .withReadonlyRootfs(false);
+
+        CreateContainerResponse container = dockerClient.createContainerCmd(config.image)
+                .withCmd(config.command)
+                .withHostConfig(hostConfig)
+                .withStdinOpen(true)
+                .withAttachStdin(true)
+                .withAttachStdout(true)
+                .withAttachStderr(true)
+                .exec();
+
+        String containerId = container.getId();
+        dockerClient.startContainerCmd(containerId).exec();
+
+        return containerId;
     }
 }
