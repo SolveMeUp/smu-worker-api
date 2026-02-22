@@ -1,7 +1,8 @@
 package com.solvemeup.smuworkerapi.worker.service;
 
-import com.solvemeup.smuworkerapi.worker.Entity.ProblemMetadata;
+import com.solvemeup.smuworkerapi.worker.dto.ParameterSpec;
 import com.solvemeup.smuworkerapi.worker.enums.Language;
+import com.solvemeup.smuworkerapi.worker.enums.ValueType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -12,15 +13,26 @@ import java.util.stream.Collectors;
 @Service
 public class CodeGenerator {
 
-    public String generateExecutableCode(Language language, String userCode, ProblemMetadata metadata) {
+    public String generateExecutableCode(
+            Language language,
+            String userCode,
+            String functionName,
+            List<ParameterSpec> parameters,
+            ValueType returnType
+    ) {
         return switch (language) {
-            case JAVA -> generateJavaCode(userCode, metadata);
-            case PYTHON -> generatePythonCode(userCode, metadata);
-            case CPP -> generateCppCode(userCode, metadata);
+            case JAVA -> generateJavaCode(userCode, functionName, parameters, returnType);
+            case PYTHON -> generatePythonCode(userCode, functionName, parameters, returnType);
+            case CPP -> generateCppCode(userCode, functionName, parameters, returnType);
         };
     }
 
-    private String generateJavaCode(String userCode, ProblemMetadata metadata) {
+    // ── Java ──────────────────────────────────────────────────────────────────
+
+    private String generateJavaCode(
+            String userCode, String functionName,
+            List<ParameterSpec> params, ValueType returnType
+    ) {
         StringBuilder code = new StringBuilder();
 
         code.append("import java.util.*;\n");
@@ -33,24 +45,17 @@ public class CodeGenerator {
         code.append("        Scanner sc = new Scanner(System.in);\n");
         code.append("        Solution solution = new Solution();\n\n");
 
-        List<ProblemMetadata.Parameter> params = metadata.parameters();
-        for (ProblemMetadata.Parameter param : params) {
+        for (ParameterSpec param : params) {
             code.append(generateJavaParameterParsing(param));
         }
 
         code.append("\n        ");
-        if (!"void".equals(metadata.returnType())) {
-            code.append(metadata.returnType()).append(" result = ");
-        }
-        code.append("solution.").append(metadata.methodName()).append("(");
-        code.append(params.stream()
-                .map(ProblemMetadata.Parameter::name)
-                .collect(Collectors.joining(", ")));
+        code.append(valueTypeToJavaType(returnType)).append(" result = ");
+        code.append("solution.").append(functionName).append("(");
+        code.append(params.stream().map(ParameterSpec::name).collect(Collectors.joining(", ")));
         code.append(");\n\n");
 
-        if (!"void".equals(metadata.returnType())) {
-            code.append(generateJavaOutputCode(metadata.returnType()));
-        }
+        code.append(generateJavaOutputCode(returnType));
 
         code.append("        sc.close();\n");
         code.append("    }\n");
@@ -60,115 +65,138 @@ public class CodeGenerator {
         return code.toString();
     }
 
-    private String generateJavaParameterParsing(ProblemMetadata.Parameter param) {
-        String type = param.type();
+    private String generateJavaParameterParsing(ParameterSpec param) {
         String name = param.name();
-
-        if (type.equals("int")) {
-            return "        int " + name + " = sc.nextInt();\n";
-        }
-        if (type.equals("long")) {
-            return "        long " + name + " = sc.nextLong();\n";
-        }
-        if (type.equals("double")) {
-            return "        double " + name + " = sc.nextDouble();\n";
-        }
-        if (type.equals("String")) {
-            return "        String " + name + " = sc.nextLine().trim();\n";
-        }
-
-        if (type.equals("int[]")) {
-            return "        String line_" + name + " = sc.nextLine().trim();\n" +
-                    "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
-                    "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
-                    "        int[] " + name + " = new int[tokens_" + name + ".length];\n" +
-                    "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
-                    "            " + name + "[i] = Integer.parseInt(tokens_" + name + "[i]);\n" +
-                    "        }\n";
-        }
-
-        if (type.equals("long[]")) {
-            return "        String line_" + name + " = sc.nextLine().trim();\n" +
-                    "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
-                    "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
-                    "        long[] " + name + " = new long[tokens_" + name + ".length];\n" +
-                    "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
-                    "            " + name + "[i] = Long.parseLong(tokens_" + name + "[i]);\n" +
-                    "        }\n";
-        }
-
-        if (type.equals("String[]")) {
-            return "        int size_" + name + " = Integer.parseInt(sc.nextLine().trim());\n" +
-                    "        String[] " + name + " = new String[size_" + name + "];\n" +
-                    "        for (int i = 0; i < size_" + name + "; i++) {\n" +
-                    "            " + name + "[i] = sc.nextLine().trim();\n" +
-                    "        }\n";
-        }
-
-        if (type.equals("int[][]")) {
-            return "        int rows_" + name + " = sc.nextInt();\n" +
-                    "        int cols_" + name + " = sc.nextInt();\n" +
-                    "        int[][] " + name + " = new int[rows_" + name + "][cols_" + name + "];\n" +
-                    "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
-                    "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
-                    "                " + name + "[i][j] = sc.nextInt();\n" +
-                    "            }\n" +
-                    "        }\n";
-        }
-
-        throw new IllegalArgumentException("Unsupported parameter type: " + type);
+        return switch (param.type()) {
+            case INT -> "        int " + name + " = sc.nextInt();\n";
+            case LONG -> "        long " + name + " = sc.nextLong();\n";
+            case BOOLEAN -> "        boolean " + name + " = Boolean.parseBoolean(sc.nextLine().trim());\n";
+            case STRING -> "        String " + name + " = sc.nextLine().trim();\n";
+            case INT_ARRAY ->
+                "        String line_" + name + " = sc.nextLine().trim();\n" +
+                "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
+                "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
+                "        int[] " + name + " = new int[tokens_" + name + ".length];\n" +
+                "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
+                "            " + name + "[i] = Integer.parseInt(tokens_" + name + "[i]);\n" +
+                "        }\n";
+            case LONG_ARRAY ->
+                "        String line_" + name + " = sc.nextLine().trim();\n" +
+                "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
+                "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
+                "        long[] " + name + " = new long[tokens_" + name + ".length];\n" +
+                "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
+                "            " + name + "[i] = Long.parseLong(tokens_" + name + "[i]);\n" +
+                "        }\n";
+            case BOOLEAN_ARRAY ->
+                "        String line_" + name + " = sc.nextLine().trim();\n" +
+                "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
+                "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
+                "        boolean[] " + name + " = new boolean[tokens_" + name + ".length];\n" +
+                "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
+                "            " + name + "[i] = Boolean.parseBoolean(tokens_" + name + "[i]);\n" +
+                "        }\n";
+            case STRING_ARRAY ->
+                "        int size_" + name + " = Integer.parseInt(sc.nextLine().trim());\n" +
+                "        String[] " + name + " = new String[size_" + name + "];\n" +
+                "        for (int i = 0; i < size_" + name + "; i++) {\n" +
+                "            " + name + "[i] = sc.nextLine().trim();\n" +
+                "        }\n";
+            case INT_2D_ARRAY ->
+                "        int rows_" + name + " = sc.nextInt();\n" +
+                "        int cols_" + name + " = sc.nextInt();\n" +
+                "        int[][] " + name + " = new int[rows_" + name + "][cols_" + name + "];\n" +
+                "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                "                " + name + "[i][j] = sc.nextInt();\n" +
+                "            }\n" +
+                "        }\n";
+            case LONG_2D_ARRAY ->
+                "        int rows_" + name + " = sc.nextInt();\n" +
+                "        int cols_" + name + " = sc.nextInt();\n" +
+                "        long[][] " + name + " = new long[rows_" + name + "][cols_" + name + "];\n" +
+                "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                "                " + name + "[i][j] = sc.nextLong();\n" +
+                "            }\n" +
+                "        }\n";
+            case BOOLEAN_2D_ARRAY ->
+                "        int rows_" + name + " = sc.nextInt();\n" +
+                "        int cols_" + name + " = sc.nextInt();\n" +
+                "        boolean[][] " + name + " = new boolean[rows_" + name + "][cols_" + name + "];\n" +
+                "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                "                " + name + "[i][j] = sc.nextBoolean();\n" +
+                "            }\n" +
+                "        }\n";
+            case STRING_2D_ARRAY ->
+                "        int rows_" + name + " = sc.nextInt();\n" +
+                "        int cols_" + name + " = sc.nextInt();\n" +
+                "        sc.nextLine();\n" +
+                "        String[][] " + name + " = new String[rows_" + name + "][cols_" + name + "];\n" +
+                "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "            String[] row_" + name + " = sc.nextLine().trim().split(\"\\\\s+\");\n" +
+                "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                "                " + name + "[i][j] = row_" + name + "[j];\n" +
+                "            }\n" +
+                "        }\n";
+        };
     }
 
-    private String generateJavaOutputCode(String returnType) {
-        StringBuilder code = new StringBuilder();
-
-        if (returnType.equals("int") || returnType.equals("long") ||
-                returnType.equals("double") || returnType.equals("String")) {
-            code.append("        System.out.println(result);\n");
-            return code.toString();
-        }
-
-        if (returnType.equals("int[]")) {
-            code.append("        for (int i = 0; i < result.length; i++) {\n");
-            code.append("            if (i > 0) System.out.print(\" \");\n");
-            code.append("            System.out.print(result[i]);\n");
-            code.append("        }\n");
-            code.append("        System.out.println();\n");
-            return code.toString();
-        }
-
-        if (returnType.equals("long[]")) {
-            code.append("        for (int i = 0; i < result.length; i++) {\n");
-            code.append("            if (i > 0) System.out.print(\" \");\n");
-            code.append("            System.out.print(result[i]);\n");
-            code.append("        }\n");
-            code.append("        System.out.println();\n");
-            return code.toString();
-        }
-
-        if (returnType.equals("String[]")) {
-            code.append("        System.out.println(result.length);\n");
-            code.append("        for (String val : result) {\n");
-            code.append("            System.out.println(val);\n");
-            code.append("        }\n");
-            return code.toString();
-        }
-
-        if (returnType.equals("int[][]")) {
-            code.append("        System.out.println(result.length + \" \" + result[0].length);\n");
-            code.append("        for (int[] row : result) {\n");
-            code.append("            for (int val : row) {\n");
-            code.append("                System.out.print(val + \" \");\n");
-            code.append("            }\n");
-            code.append("            System.out.println();\n");
-            code.append("        }\n");
-            return code.toString();
-        }
-
-        throw new IllegalArgumentException("Unsupported return type: " + returnType);
+    private String generateJavaOutputCode(ValueType returnType) {
+        return switch (returnType) {
+            case INT, LONG, BOOLEAN, STRING -> "        System.out.println(result);\n";
+            case INT_ARRAY, LONG_ARRAY, BOOLEAN_ARRAY ->
+                "        for (int i = 0; i < result.length; i++) {\n" +
+                "            if (i > 0) System.out.print(\" \");\n" +
+                "            System.out.print(result[i]);\n" +
+                "        }\n" +
+                "        System.out.println();\n";
+            case STRING_ARRAY ->
+                "        System.out.println(result.length);\n" +
+                "        for (String val : result) {\n" +
+                "            System.out.println(val);\n" +
+                "        }\n";
+            case INT_2D_ARRAY, LONG_2D_ARRAY, BOOLEAN_2D_ARRAY ->
+                "        System.out.println(result.length + \" \" + result[0].length);\n" +
+                "        for (var row : result) {\n" +
+                "            for (int i = 0; i < row.length; i++) {\n" +
+                "                if (i > 0) System.out.print(\" \");\n" +
+                "                System.out.print(row[i]);\n" +
+                "            }\n" +
+                "            System.out.println();\n" +
+                "        }\n";
+            case STRING_2D_ARRAY ->
+                "        System.out.println(result.length + \" \" + result[0].length);\n" +
+                "        for (String[] row : result) {\n" +
+                "            System.out.println(String.join(\" \", row));\n" +
+                "        }\n";
+        };
     }
 
-    private String generatePythonCode(String userCode, ProblemMetadata metadata) {
+    private String valueTypeToJavaType(ValueType type) {
+        return switch (type) {
+            case INT -> "int";
+            case LONG -> "long";
+            case BOOLEAN -> "boolean";
+            case STRING -> "String";
+            case INT_ARRAY -> "int[]";
+            case LONG_ARRAY -> "long[]";
+            case BOOLEAN_ARRAY -> "boolean[]";
+            case STRING_ARRAY -> "String[]";
+            case INT_2D_ARRAY -> "int[][]";
+            case LONG_2D_ARRAY -> "long[][]";
+            case BOOLEAN_2D_ARRAY -> "boolean[][]";
+            case STRING_2D_ARRAY -> "String[][]";
+        };
+    }
+
+    // ── Python ────────────────────────────────────────────────────────────────
+
+    private String generatePythonCode(
+            String userCode, String functionName,
+            List<ParameterSpec> params, ValueType returnType
+    ) {
         StringBuilder code = new StringBuilder();
 
         code.append(userCode).append("\n\n");
@@ -178,77 +206,100 @@ public class CodeGenerator {
         code.append("    input_lines = sys.stdin.read().strip().split('\\n')\n");
         code.append("    line_idx = 0\n\n");
 
-        List<ProblemMetadata.Parameter> params = metadata.parameters();
-
-        for (ProblemMetadata.Parameter param : params) {
+        for (ParameterSpec param : params) {
             code.append(generatePythonParameterParsing(param));
         }
 
         code.append("\n    solution = Solution()\n");
-        code.append("    result = solution.").append(metadata.methodName()).append("(");
-        code.append(params.stream()
-                .map(ProblemMetadata.Parameter::name)
-                .collect(Collectors.joining(", ")));
+        code.append("    result = solution.").append(functionName).append("(");
+        code.append(params.stream().map(ParameterSpec::name).collect(Collectors.joining(", ")));
         code.append(")\n\n");
 
-        if (!"void".equals(metadata.returnType())) {
-            code.append(generatePythonOutputCode(metadata.returnType()));
-        }
+        code.append(generatePythonOutputCode(returnType));
 
         log.debug("Generated Python code:\n{}", code);
         return code.toString();
     }
 
-    private String generatePythonParameterParsing(ProblemMetadata.Parameter param) {
-        String type = param.type();
+    private String generatePythonParameterParsing(ParameterSpec param) {
         String name = param.name();
-
-        if (type.equals("int")) {
-            return "    " + name + " = int(input_lines[line_idx].split()[0])\n" +
-                    "    line_idx += 1\n";
-        }
-        if (type.equals("String")) {
-            return "    " + name + " = input_lines[line_idx]\n" +
-                    "    line_idx += 1\n";
-        }
-        if (type.equals("int[]")) {
-            return "    " + name + " = list(map(int, input_lines[line_idx].split()))\n" +
-                    "    line_idx += 1\n";
-        }
-
-        if (type.equals("int[][]")) {
-            return "    tokens = input_lines[line_idx].split()\n" +
-                    "    rows = int(tokens[0])\n" +
-                    "    cols = int(tokens[1])\n" +
-                    "    line_idx += 1\n" +
-                    "    " + name + " = []\n" +
-                    "    for i in range(rows):\n" +
-                    "        row = list(map(int, input_lines[line_idx].split()))\n" +
-                    "        " + name + ".append(row)\n" +
-                    "        line_idx += 1\n";
-        }
-
-        throw new IllegalArgumentException("Unsupported parameter type: " + type);
+        return switch (param.type()) {
+            case INT -> "    " + name + " = int(input_lines[line_idx].split()[0])\n    line_idx += 1\n";
+            case LONG -> "    " + name + " = int(input_lines[line_idx].split()[0])\n    line_idx += 1\n";
+            case BOOLEAN -> "    " + name + " = input_lines[line_idx].strip().lower() == 'true'\n    line_idx += 1\n";
+            case STRING -> "    " + name + " = input_lines[line_idx]\n    line_idx += 1\n";
+            case INT_ARRAY, LONG_ARRAY ->
+                "    " + name + " = list(map(int, input_lines[line_idx].split()))\n    line_idx += 1\n";
+            case BOOLEAN_ARRAY ->
+                "    " + name + " = [x.lower() == 'true' for x in input_lines[line_idx].split()]\n    line_idx += 1\n";
+            case STRING_ARRAY ->
+                "    size_" + name + " = int(input_lines[line_idx])\n" +
+                "    line_idx += 1\n" +
+                "    " + name + " = []\n" +
+                "    for i in range(size_" + name + "):\n" +
+                "        " + name + ".append(input_lines[line_idx])\n" +
+                "        line_idx += 1\n";
+            case INT_2D_ARRAY, LONG_2D_ARRAY ->
+                "    tokens_" + name + " = input_lines[line_idx].split()\n" +
+                "    rows_" + name + " = int(tokens_" + name + "[0])\n" +
+                "    line_idx += 1\n" +
+                "    " + name + " = []\n" +
+                "    for i in range(rows_" + name + "):\n" +
+                "        row = list(map(int, input_lines[line_idx].split()))\n" +
+                "        " + name + ".append(row)\n" +
+                "        line_idx += 1\n";
+            case BOOLEAN_2D_ARRAY ->
+                "    tokens_" + name + " = input_lines[line_idx].split()\n" +
+                "    rows_" + name + " = int(tokens_" + name + "[0])\n" +
+                "    line_idx += 1\n" +
+                "    " + name + " = []\n" +
+                "    for i in range(rows_" + name + "):\n" +
+                "        row = [x.lower() == 'true' for x in input_lines[line_idx].split()]\n" +
+                "        " + name + ".append(row)\n" +
+                "        line_idx += 1\n";
+            case STRING_2D_ARRAY ->
+                "    tokens_" + name + " = input_lines[line_idx].split()\n" +
+                "    rows_" + name + " = int(tokens_" + name + "[0])\n" +
+                "    line_idx += 1\n" +
+                "    " + name + " = []\n" +
+                "    for i in range(rows_" + name + "):\n" +
+                "        row = input_lines[line_idx].split()\n" +
+                "        " + name + ".append(row)\n" +
+                "        line_idx += 1\n";
+        };
     }
 
-    private String generatePythonOutputCode(String returnType) {
-        if (returnType.equals("int") || returnType.equals("String")) {
-            return "    print(result)\n";
-        }
-        if (returnType.equals("int[]")) {
-            return "    print(' '.join(map(str, result)))\n";
-        }
-
-        if (returnType.equals("int[][]")) {
-            return "    print(len(result), len(result[0]))\n" +
-                    "    for row in result:\n" +
-                    "        print(' '.join(map(str, row)))\n";
-        }
-
-        throw new IllegalArgumentException("Unsupported return type: " + returnType);
+    private String generatePythonOutputCode(ValueType returnType) {
+        return switch (returnType) {
+            case INT, LONG, STRING -> "    print(result)\n";
+            case BOOLEAN -> "    print('true' if result else 'false')\n";
+            case INT_ARRAY, LONG_ARRAY -> "    print(' '.join(map(str, result)))\n";
+            case BOOLEAN_ARRAY -> "    print(' '.join('true' if x else 'false' for x in result))\n";
+            case STRING_ARRAY ->
+                "    print(len(result))\n" +
+                "    for s in result:\n" +
+                "        print(s)\n";
+            case INT_2D_ARRAY, LONG_2D_ARRAY ->
+                "    print(len(result), len(result[0]))\n" +
+                "    for row in result:\n" +
+                "        print(' '.join(map(str, row)))\n";
+            case BOOLEAN_2D_ARRAY ->
+                "    print(len(result), len(result[0]))\n" +
+                "    for row in result:\n" +
+                "        print(' '.join('true' if x else 'false' for x in row))\n";
+            case STRING_2D_ARRAY ->
+                "    print(len(result), len(result[0]))\n" +
+                "    for row in result:\n" +
+                "        print(' '.join(row))\n";
+        };
     }
 
-    private String generateCppCode(String userCode, ProblemMetadata metadata) {
+    // ── C++ ───────────────────────────────────────────────────────────────────
+
+    private String generateCppCode(
+            String userCode, String functionName,
+            List<ParameterSpec> params, ValueType returnType
+    ) {
         StringBuilder code = new StringBuilder();
         code.append("#include <sstream>\n");
         code.append("#include <iostream>\n");
@@ -260,26 +311,18 @@ public class CodeGenerator {
 
         code.append("int main() {\n");
 
-        List<ProblemMetadata.Parameter> params = metadata.parameters();
-
-        for (ProblemMetadata.Parameter param : params) {
+        for (ParameterSpec param : params) {
             code.append(generateCppParameterParsing(param));
         }
 
         code.append("\n    Solution solution;\n");
         code.append("    ");
-        if (!"void".equals(metadata.returnType())) {
-            code.append(convertToCppType(metadata.returnType())).append(" result = ");
-        }
-        code.append("solution.").append(metadata.methodName()).append("(");
-        code.append(params.stream()
-                .map(ProblemMetadata.Parameter::name)
-                .collect(Collectors.joining(", ")));
+        code.append(valueTypeToCppType(returnType)).append(" result = ");
+        code.append("solution.").append(functionName).append("(");
+        code.append(params.stream().map(ParameterSpec::name).collect(Collectors.joining(", ")));
         code.append(");\n\n");
 
-        if (!"void".equals(metadata.returnType())) {
-            code.append(generateCppOutputCode(metadata.returnType()));
-        }
+        code.append(generateCppOutputCode(returnType));
 
         code.append("\n    return 0;\n");
         code.append("}\n");
@@ -288,78 +331,154 @@ public class CodeGenerator {
         return code.toString();
     }
 
-    private String generateCppParameterParsing(ProblemMetadata.Parameter param) {
-        String type = param.type();
+    private String generateCppParameterParsing(ParameterSpec param) {
         String name = param.name();
-
-        if (type.equals("int")) {
-            return "    int " + name + ";\n" +
-                    "    cin >> " + name + ";\n";
-        }
-        if (type.equals("String")) {
-            return "    string " + name + ";\n" +
-                    "    getline(cin, " + name + ");\n";
-        }
-        if (type.equals("int[]")) {
-            return "    string line_" + name + ";\n" +
-                    "    getline(cin, line_" + name + ");\n" +
-                    "    istringstream iss_" + name + "(line_" + name + ");\n" +
-                    "    vector<int> " + name + ";\n" +
-                    "    { int val; while (iss_" + name + " >> val) " + name + ".push_back(val); }\n";
-        }
-
-        if (type.equals("int[][]")) {
-            return "    int rows_" + name + ", cols_" + name + ";\n" +
-                    "    cin >> rows_" + name + " >> cols_" + name + ";\n" +
-                    "    vector<vector<int>> " + name + "(rows_" + name + ", vector<int>(cols_" + name + "));\n" +
-                    "    for (int i = 0; i < rows_" + name + "; i++) {\n" +
-                    "        for (int j = 0; j < cols_" + name + "; j++) {\n" +
-                    "            cin >> " + name + "[i][j];\n" +
-                    "        }\n" +
-                    "    }\n";
-        }
-
-        throw new IllegalArgumentException("Unsupported parameter type: " + type);
+        return switch (param.type()) {
+            case INT ->
+                "    int " + name + ";\n" +
+                "    cin >> " + name + ";\n";
+            case LONG ->
+                "    long long " + name + ";\n" +
+                "    cin >> " + name + ";\n";
+            case BOOLEAN ->
+                "    string boolStr_" + name + ";\n" +
+                "    cin >> boolStr_" + name + ";\n" +
+                "    bool " + name + " = (boolStr_" + name + " == \"true\");\n";
+            case STRING ->
+                "    string " + name + ";\n" +
+                "    getline(cin, " + name + ");\n";
+            case INT_ARRAY ->
+                "    string line_" + name + ";\n" +
+                "    getline(cin, line_" + name + ");\n" +
+                "    istringstream iss_" + name + "(line_" + name + ");\n" +
+                "    vector<int> " + name + ";\n" +
+                "    { int val; while (iss_" + name + " >> val) " + name + ".push_back(val); }\n";
+            case LONG_ARRAY ->
+                "    string line_" + name + ";\n" +
+                "    getline(cin, line_" + name + ");\n" +
+                "    istringstream iss_" + name + "(line_" + name + ");\n" +
+                "    vector<long long> " + name + ";\n" +
+                "    { long long val; while (iss_" + name + " >> val) " + name + ".push_back(val); }\n";
+            case BOOLEAN_ARRAY ->
+                "    string line_" + name + ";\n" +
+                "    getline(cin, line_" + name + ");\n" +
+                "    istringstream iss_" + name + "(line_" + name + ");\n" +
+                "    vector<bool> " + name + ";\n" +
+                "    { string tok; while (iss_" + name + " >> tok) " + name + ".push_back(tok == \"true\"); }\n";
+            case STRING_ARRAY ->
+                "    int size_" + name + ";\n" +
+                "    cin >> size_" + name + ";\n" +
+                "    cin.ignore();\n" +
+                "    vector<string> " + name + ";\n" +
+                "    for (int i = 0; i < size_" + name + "; i++) {\n" +
+                "        string s; getline(cin, s);\n" +
+                "        " + name + ".push_back(s);\n" +
+                "    }\n";
+            case INT_2D_ARRAY ->
+                "    int rows_" + name + ", cols_" + name + ";\n" +
+                "    cin >> rows_" + name + " >> cols_" + name + ";\n" +
+                "    vector<vector<int>> " + name + "(rows_" + name + ", vector<int>(cols_" + name + "));\n" +
+                "    for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "        for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                "            cin >> " + name + "[i][j];\n" +
+                "        }\n" +
+                "    }\n";
+            case LONG_2D_ARRAY ->
+                "    int rows_" + name + ", cols_" + name + ";\n" +
+                "    cin >> rows_" + name + " >> cols_" + name + ";\n" +
+                "    vector<vector<long long>> " + name + "(rows_" + name + ", vector<long long>(cols_" + name + "));\n" +
+                "    for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "        for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                "            cin >> " + name + "[i][j];\n" +
+                "        }\n" +
+                "    }\n";
+            case BOOLEAN_2D_ARRAY ->
+                "    int rows_" + name + ", cols_" + name + ";\n" +
+                "    cin >> rows_" + name + " >> cols_" + name + ";\n" +
+                "    vector<vector<bool>> " + name + "(rows_" + name + ", vector<bool>(cols_" + name + "));\n" +
+                "    for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "        for (int j = 0; j < cols_" + name + "; j++) {\n" +
+                "            string tok; cin >> tok;\n" +
+                "            " + name + "[i][j] = (tok == \"true\");\n" +
+                "        }\n" +
+                "    }\n";
+            case STRING_2D_ARRAY ->
+                "    int rows_" + name + ", cols_" + name + ";\n" +
+                "    cin >> rows_" + name + " >> cols_" + name + ";\n" +
+                "    cin.ignore();\n" +
+                "    vector<vector<string>> " + name + "(rows_" + name + ");\n" +
+                "    for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "        string rowLine; getline(cin, rowLine);\n" +
+                "        istringstream rowIss(rowLine);\n" +
+                "        string tok;\n" +
+                "        while (rowIss >> tok) " + name + "[i].push_back(tok);\n" +
+                "    }\n";
+        };
     }
 
-    private String generateCppOutputCode(String returnType) {
-        if (returnType.equals("int")) {
-            return "    cout << result << endl;\n";
-        }
-        if (returnType.equals("String")) {
-            return "    cout << result << endl;\n";
-        }
-        if (returnType.equals("int[]")) {
-            return "    for (int i = 0; i < result.size(); i++) {\n" +
-                    "        if (i > 0) cout << \" \";\n" +
-                    "        cout << result[i];\n" +
-                    "    }\n" +
-                    "    cout << endl;\n";
-        }
-
-        if (returnType.equals("int[][]")) {
-            return "    cout << result.size() << \" \" << result[0].size() << endl;\n" +
-                    "    for (auto& row : result) {\n" +
-                    "        for (int val : row) {\n" +
-                    "            cout << val << \" \";\n" +
-                    "        }\n" +
-                    "        cout << endl;\n" +
-                    "    }\n";
-        }
-
-        throw new IllegalArgumentException("Unsupported return type: " + returnType);
+    private String generateCppOutputCode(ValueType returnType) {
+        return switch (returnType) {
+            case INT, LONG, STRING -> "    cout << result << endl;\n";
+            case BOOLEAN -> "    cout << (result ? \"true\" : \"false\") << endl;\n";
+            case INT_ARRAY, LONG_ARRAY ->
+                "    for (int i = 0; i < (int)result.size(); i++) {\n" +
+                "        if (i > 0) cout << \" \";\n" +
+                "        cout << result[i];\n" +
+                "    }\n" +
+                "    cout << endl;\n";
+            case BOOLEAN_ARRAY ->
+                "    for (int i = 0; i < (int)result.size(); i++) {\n" +
+                "        if (i > 0) cout << \" \";\n" +
+                "        cout << (result[i] ? \"true\" : \"false\");\n" +
+                "    }\n" +
+                "    cout << endl;\n";
+            case STRING_ARRAY ->
+                "    cout << result.size() << endl;\n" +
+                "    for (const auto& s : result) cout << s << endl;\n";
+            case INT_2D_ARRAY, LONG_2D_ARRAY ->
+                "    cout << result.size() << \" \" << result[0].size() << endl;\n" +
+                "    for (const auto& row : result) {\n" +
+                "        for (int i = 0; i < (int)row.size(); i++) {\n" +
+                "            if (i > 0) cout << \" \";\n" +
+                "            cout << row[i];\n" +
+                "        }\n" +
+                "        cout << endl;\n" +
+                "    }\n";
+            case BOOLEAN_2D_ARRAY ->
+                "    cout << result.size() << \" \" << result[0].size() << endl;\n" +
+                "    for (const auto& row : result) {\n" +
+                "        for (int i = 0; i < (int)row.size(); i++) {\n" +
+                "            if (i > 0) cout << \" \";\n" +
+                "            cout << (row[i] ? \"true\" : \"false\");\n" +
+                "        }\n" +
+                "        cout << endl;\n" +
+                "    }\n";
+            case STRING_2D_ARRAY ->
+                "    cout << result.size() << \" \" << result[0].size() << endl;\n" +
+                "    for (const auto& row : result) {\n" +
+                "        for (int i = 0; i < (int)row.size(); i++) {\n" +
+                "            if (i > 0) cout << \" \";\n" +
+                "            cout << row[i];\n" +
+                "        }\n" +
+                "        cout << endl;\n" +
+                "    }\n";
+        };
     }
 
-    private String convertToCppType(String javaType) {
-        return switch (javaType) {
-            case "int" -> "int";
-            case "long" -> "long long";
-            case "double" -> "double";
-            case "String" -> "string";
-            case "int[]" -> "vector<int>";
-            case "long[]" -> "vector<long long>";
-            case "int[][]" -> "vector<vector<int>>";
-            default -> throw new IllegalArgumentException("Unsupported type: " + javaType);
+    private String valueTypeToCppType(ValueType type) {
+        return switch (type) {
+            case INT -> "int";
+            case LONG -> "long long";
+            case BOOLEAN -> "bool";
+            case STRING -> "string";
+            case INT_ARRAY -> "vector<int>";
+            case LONG_ARRAY -> "vector<long long>";
+            case BOOLEAN_ARRAY -> "vector<bool>";
+            case STRING_ARRAY -> "vector<string>";
+            case INT_2D_ARRAY -> "vector<vector<int>>";
+            case LONG_2D_ARRAY -> "vector<vector<long long>>";
+            case BOOLEAN_2D_ARRAY -> "vector<vector<bool>>";
+            case STRING_2D_ARRAY -> "vector<vector<string>>";
         };
     }
 }
