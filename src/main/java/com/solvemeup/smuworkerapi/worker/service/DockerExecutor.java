@@ -29,13 +29,13 @@ public class DockerExecutor {
             String input,
             int testCaseNumber,
             int timeLimitMillis,
-            int memoryLimitMB
+            int memoryLimitKB
     ) throws Exception {
         long startTime = System.currentTimeMillis();
         String containerId = null;
 
         try {
-            containerId = createAndStartContainer(language, executableCode, input, memoryLimitMB);
+            containerId = createAndStartContainer(language, executableCode, input, memoryLimitKB);
             log.debug("Container created: {} for test case {}", containerId.substring(0, 12), testCaseNumber);
 
             Integer exitCode = waitForContainerWithTimeout(containerId, timeLimitMillis, testCaseNumber);
@@ -64,7 +64,7 @@ public class DockerExecutor {
                     executionTime,
                     timeLimitMillis,
                     memoryUsageKB,
-                    memoryLimitMB,
+                    memoryLimitKB,
                     language
             );
 
@@ -77,13 +77,13 @@ public class DockerExecutor {
             Language language,
             String executableCode,
             String input,
-            int memoryLimitMB
+            int memoryLimitKB
     ) {
         DockerConfig config = getDockerConfig(language, executableCode, input);
 
         HostConfig hostConfig = HostConfig.newHostConfig()
-                .withMemory((long) memoryLimitMB * 1024 * 1024)
-                .withMemorySwap((long) memoryLimitMB * 1024 * 1024)
+                .withMemory((long) memoryLimitKB * 1024)
+                .withMemorySwap((long) memoryLimitKB * 1024)
                 .withCpuQuota(100000L)
                 .withCpuPeriod(100000L)
                 .withNetworkMode("none")
@@ -192,7 +192,7 @@ public class DockerExecutor {
             long executionTime,
             int timeLimitMillis,
             int memoryUsageKB,
-            int memoryLimitMB,
+            int memoryLimitKB,
             Language language
     ) {
         if (executionTime > timeLimitMillis) {
@@ -205,7 +205,7 @@ public class DockerExecutor {
             );
         }
 
-        if (memoryUsageKB > (long) memoryLimitMB * 1024) {
+        if (memoryUsageKB > memoryLimitKB) {
             return new ExecutionResult(
                     JudgeResult.MLE,
                     output,

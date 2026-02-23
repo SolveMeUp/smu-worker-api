@@ -1,9 +1,8 @@
 package com.solvemeup.smuworkerapi.worker.service;
 
-import com.solvemeup.smuworkerapi.worker.Entity.ProblemMetadata;
 import com.solvemeup.smuworkerapi.worker.Entity.TestCase;
-import com.solvemeup.smuworkerapi.worker.dto.JudgeRequestMessage;
-import com.solvemeup.smuworkerapi.worker.dto.JudgeResponseMessage;
+import com.solvemeup.smuworkerapi.worker.dto.SubmissionRequestMessage;
+import com.solvemeup.smuworkerapi.worker.dto.SubmissionResultMessage;
 import com.solvemeup.smuworkerapi.worker.enums.JudgeResult;
 import com.solvemeup.smuworkerapi.worker.message.JudgeResultProducer;
 import lombok.RequiredArgsConstructor;
@@ -17,25 +16,23 @@ import java.util.List;
 @RequiredArgsConstructor
 public class JudgeService {
 
-    private final MetadataLoader metadataLoader;
     private final TestCaseLoader testCaseLoader;
     private final CodeGenerator codeGenerator;
     private final DockerExecutor dockerExecutor;
     private final OutputComparator outputComparator;
+    private final ArgumentConverter argumentConverter;
     private final JudgeResultProducer resultProducer;
 
-    public void judge(JudgeRequestMessage request) {
-        log.info("Starting judge - judgeId: {}, problemId: {}, submissionId: {}, language: {}",
-                request.judgeId(), request.problemId(), request.submissionId(), request.language());
+    public void judge(SubmissionRequestMessage request) {
+        log.info("Starting judge - submissionResultId: {}, problemId: {}, submissionId: {}, language: {}",
+                request.submissionResultId(), request.problemId(), request.submissionId(), request.language());
 
         try {
-            ProblemMetadata metadata = metadataLoader.loadMetadata(request.problemId());
-
             List<TestCase> testCases = testCaseLoader.loadTestCases(request.problemId());
 
             if (testCases.isEmpty()) {
                 log.error("No test cases found for problem {}", request.problemId());
-                sendErrorResult(request, JudgeResult.SYSTEM_ERROR, 0, 0);
+                sendErrorResult(request, JudgeResult.SYSTEM_ERROR);
                 return;
             }
 
@@ -44,16 +41,25 @@ public class JudgeService {
             String executableCode = codeGenerator.generateExecutableCode(
                     request.language(),
                     request.sourceCode(),
-                    metadata
+                    request.functionName(),
+                    request.parameters(),
+                    request.returnType()
             );
 
             JudgeResult finalResult = JudgeResult.AC;
-            int totalTimeUsed = 0;
+            int maxTimeUsed = 0;
             int maxMemoryUsed = 0;
 
+            Integer failedTestIndex = null;
+            String failedExpectedOutput = null;
+            String failedActualOutput = null;
+            List<String> failedArguments = null;
+
             for (TestCase testCase : testCases) {
-                log.info("Executing test case {}/{} - judgeId: {}",
-                        testCase.number(), testCases.size(), request.judgeId());
+                int caseIndex = testCase.number() - 1;
+
+                log.info("Executing test case {}/{} - submissionResultId: {}",
+                        testCase.number(), testCases.size(), request.submissionResultId());
 
                 DockerExecutor.ExecutionResult execResult = dockerExecutor.execute(
                         request.language(),
@@ -61,84 +67,76 @@ public class JudgeService {
                         testCase.input(),
                         testCase.number(),
                         request.timeLimitMillis(),
-                        request.memoryLimitMegabytes()
+                        request.memoryLimitKilobytes()
                 );
 
-                if (execResult.status() == JudgeResult.AC) {
-                    boolean isCorrect = outputComparator.compare(
-                            execResult.output(),
-                            testCase.expectedOutut()
-                    );
-
-                    if (!isCorrect) {
-                        log.error("=== Wrong Answer at test case {} ===", testCase.number());
-                        log.error("Expected: [{}]", testCase.expectedOutut());
-                        log.error("Actual:   [{}]", execResult.output());
-
-                        log.info("Wrong answer at test case {} - judgeId: {}", testCase.number(), request.judgeId());
-                        finalResult = JudgeResult.WA;
-                        break;
-                    }
-                }
-                totalTimeUsed += execResult.executionTimeMillis();
+                maxTimeUsed = Math.max(maxTimeUsed, execResult.executionTimeMillis());
                 maxMemoryUsed = Math.max(maxMemoryUsed, execResult.memoryUsageKB());
 
                 log.info("Test case {}/{} executed - status: {}, time: {}ms, memory: {}KB",
                         testCase.number(), testCases.size(),
                         execResult.status(), execResult.executionTimeMillis(), execResult.memoryUsageKB());
 
-                if (execResult.status() == JudgeResult.AC) {
-                    boolean isCorrect = outputComparator.compare(
-                            execResult.output(),
-                            testCase.expectedOutut()
-                    );
-
-                    if (!isCorrect) {
-                        log.info("Wrong answer at test case {} - judgeId: {}", testCase.number(), request.judgeId());
-                        finalResult = JudgeResult.WA;
-                        break;
-                    }
-                } else {
-                    log.info("Execution failed at test case {} with status {} - judgeId: {}",
-                            testCase.number(), execResult.status(), request.judgeId());
-                    finalResult = execResult.status();
-
-                    if (execResult.error() != null && !execResult.error().isEmpty()) {
-                        log.debug("Error output:\n{}", execResult.error());
-                    }
+                if (execResult.status() == JudgeResult.CE) {
+                    finalResult = JudgeResult.CE;
                     break;
                 }
 
-                log.info("Test case {}/{} passed - judgeId: {}",
-                        testCase.number(), testCases.size(), request.judgeId());
+                if (execResult.status() != JudgeResult.AC) {
+                    finalResult = execResult.status();
+                    failedTestIndex = caseIndex;
+                    failedExpectedOutput = testCase.expectedOutput();
+                    failedActualOutput = execResult.output();
+                    failedArguments = argumentConverter.stdinToArguments(testCase.input(), request.parameters());
+                    log.info("Execution failed at test case {} with status {} - submissionResultId: {}",
+                            testCase.number(), execResult.status(), request.submissionResultId());
+                    break;
+                }
+
+                boolean isCorrect = outputComparator.compare(execResult.output(), testCase.expectedOutput());
+                if (!isCorrect) {
+                    finalResult = JudgeResult.WA;
+                    failedTestIndex = caseIndex;
+                    failedExpectedOutput = testCase.expectedOutput();
+                    failedActualOutput = execResult.output();
+                    failedArguments = argumentConverter.stdinToArguments(testCase.input(), request.parameters());
+                    log.info("Wrong answer at test case {} - submissionResultId: {}", testCase.number(), request.submissionResultId());
+                    break;
+                }
+
+                log.info("Test case {}/{} passed - submissionResultId: {}",
+                        testCase.number(), testCases.size(), request.submissionResultId());
             }
 
-            int memoryUsedMB = maxMemoryUsed / 1024;
-
-            resultProducer.sendResult(new JudgeResponseMessage(
-                    request.judgeId(),
+            resultProducer.sendResult(new SubmissionResultMessage(
+                    request.submissionResultId(),
                     request.submissionId(),
+                    request.problemId(),
                     finalResult,
-                    totalTimeUsed,
-                    memoryUsedMB
+                    failedTestIndex,
+                    failedExpectedOutput,
+                    failedActualOutput,
+                    failedArguments,
+                    maxTimeUsed,
+                    maxMemoryUsed
             ));
 
-            log.info("Judge completed - judgeId: {}, result: {}, time: {}ms, memory: {}MB",
-                    request.judgeId(), finalResult, totalTimeUsed, memoryUsedMB);
+            log.info("Judge completed - submissionResultId: {}, result: {}, time: {}ms, memory: {}KB",
+                    request.submissionResultId(), finalResult, maxTimeUsed, maxMemoryUsed);
 
         } catch (Exception e) {
-            log.error("Judge failed with exception - judgeId: {}", request.judgeId(), e);
-            sendErrorResult(request, JudgeResult.SYSTEM_ERROR, 0, 0);
+            log.error("Judge failed with exception - submissionResultId: {}", request.submissionResultId(), e);
+            sendErrorResult(request, JudgeResult.SYSTEM_ERROR);
         }
     }
 
-    private void sendErrorResult(JudgeRequestMessage request, JudgeResult result, int timeUsed, int memoryUsed) {
-        resultProducer.sendResult(new JudgeResponseMessage(
-                request.judgeId(),
+    private void sendErrorResult(SubmissionRequestMessage request, JudgeResult result) {
+        resultProducer.sendResult(new SubmissionResultMessage(
+                request.submissionResultId(),
                 request.submissionId(),
+                request.problemId(),
                 result,
-                timeUsed,
-                memoryUsed
+                null, null, null, null, null, null
         ));
     }
 }

@@ -1,7 +1,7 @@
 package com.solvemeup.smuworkerapi.worker.message;
 
 import com.solvemeup.smuworkerapi.worker.config.RabbitConfig;
-import com.solvemeup.smuworkerapi.worker.dto.JudgeResponseMessage;
+import com.solvemeup.smuworkerapi.worker.dto.SubmissionResultMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -14,19 +14,19 @@ public class JudgeResultProducer {
 
     private final RabbitTemplate rabbitTemplate;
 
-    public void sendResult(JudgeResponseMessage message) {
-        log.info("Sending judge result - judgeId: {}, result: {}, time: {}ms, memory: {}MB",
-                message.judgeId(), message.result(), message.timeUsedMillis(), message.memoryUsedMegabytes());
+    public void sendResult(SubmissionResultMessage message) {
+        log.info("Sending submission result - submissionResultId: {}, result: {}, time: {}ms, memory: {}KB",
+                message.submissionResultId(), message.result(), message.timeUsedMillis(), message.memoryUsedKilobytes());
 
         try {
             rabbitTemplate.convertAndSend(
                     RabbitConfig.JUDGE_EXCHANGE,
-                    RabbitConfig.RESULT_ROUTING_KEY,
+                    RabbitConfig.JUDGE_RESULT_ROUTING_KEY,
                     message
             );
-            log.debug("Judge result sent successfully - judgeId: {}", message.judgeId());
+            log.debug("Submission result sent successfully - submissionResultId: {}", message.submissionResultId());
         } catch (Exception e) {
-            log.error("Failed to send judge result - judgeId: {}", message.judgeId(), e);
+            log.error("Failed to send submission result - submissionResultId: {}", message.submissionResultId(), e);
             throw e;
         }
     }
