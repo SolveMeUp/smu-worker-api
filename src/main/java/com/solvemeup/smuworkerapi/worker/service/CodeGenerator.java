@@ -41,8 +41,8 @@ public class CodeGenerator {
         code.append(userCode).append("\n\n");
 
         code.append("public class Main {\n");
-        code.append("    public static void main(String[] args) {\n");
-        code.append("        Scanner sc = new Scanner(System.in);\n");
+        code.append("    public static void main(String[] args) throws Exception {\n");
+        code.append("        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));\n");
         code.append("        Solution solution = new Solution();\n\n");
 
         for (ParameterSpec param : params) {
@@ -57,7 +57,6 @@ public class CodeGenerator {
 
         code.append(generateJavaOutputCode(returnType));
 
-        code.append("        sc.close();\n");
         code.append("    }\n");
         code.append("}\n");
 
@@ -68,74 +67,78 @@ public class CodeGenerator {
     private String generateJavaParameterParsing(ParameterSpec param) {
         String name = param.name();
         return switch (param.type()) {
-            case INT -> "        int " + name + " = sc.nextInt();\n";
-            case LONG -> "        long " + name + " = sc.nextLong();\n";
-            case BOOLEAN -> "        boolean " + name + " = Boolean.parseBoolean(sc.nextLine().trim());\n";
-            case STRING -> "        String " + name + " = sc.nextLine().trim();\n";
+            case INT ->
+                "        int " + name + " = Integer.parseInt(br.readLine().trim());\n";
+            case LONG ->
+                "        long " + name + " = Long.parseLong(br.readLine().trim());\n";
+            case BOOLEAN ->
+                "        boolean " + name + " = Boolean.parseBoolean(br.readLine().trim());\n";
+            case STRING ->
+                "        String " + name + " = br.readLine().trim();\n";
             case INT_ARRAY ->
-                "        String line_" + name + " = sc.nextLine().trim();\n" +
-                "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
-                "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
+                "        String[] tokens_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
                 "        int[] " + name + " = new int[tokens_" + name + ".length];\n" +
                 "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
                 "            " + name + "[i] = Integer.parseInt(tokens_" + name + "[i]);\n" +
                 "        }\n";
             case LONG_ARRAY ->
-                "        String line_" + name + " = sc.nextLine().trim();\n" +
-                "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
-                "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
+                "        String[] tokens_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
                 "        long[] " + name + " = new long[tokens_" + name + ".length];\n" +
                 "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
                 "            " + name + "[i] = Long.parseLong(tokens_" + name + "[i]);\n" +
                 "        }\n";
             case BOOLEAN_ARRAY ->
-                "        String line_" + name + " = sc.nextLine().trim();\n" +
-                "        if (line_" + name + ".isEmpty() && sc.hasNextLine()) line_" + name + " = sc.nextLine().trim();\n" +
-                "        String[] tokens_" + name + " = line_" + name + ".split(\"\\\\s+\");\n" +
+                "        String[] tokens_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
                 "        boolean[] " + name + " = new boolean[tokens_" + name + ".length];\n" +
                 "        for (int i = 0; i < tokens_" + name + ".length; i++) {\n" +
                 "            " + name + "[i] = Boolean.parseBoolean(tokens_" + name + "[i]);\n" +
                 "        }\n";
             case STRING_ARRAY ->
-                "        int size_" + name + " = Integer.parseInt(sc.nextLine().trim());\n" +
+                "        int size_" + name + " = Integer.parseInt(br.readLine().trim());\n" +
                 "        String[] " + name + " = new String[size_" + name + "];\n" +
                 "        for (int i = 0; i < size_" + name + "; i++) {\n" +
-                "            " + name + "[i] = sc.nextLine().trim();\n" +
+                "            " + name + "[i] = br.readLine().trim();\n" +
                 "        }\n";
             case INT_2D_ARRAY ->
-                "        int rows_" + name + " = sc.nextInt();\n" +
-                "        int cols_" + name + " = sc.nextInt();\n" +
+                "        String[] dims_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
+                "        int rows_" + name + " = Integer.parseInt(dims_" + name + "[0]);\n" +
+                "        int cols_" + name + " = Integer.parseInt(dims_" + name + "[1]);\n" +
                 "        int[][] " + name + " = new int[rows_" + name + "][cols_" + name + "];\n" +
                 "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "            String[] row_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
                 "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
-                "                " + name + "[i][j] = sc.nextInt();\n" +
+                "                " + name + "[i][j] = Integer.parseInt(row_" + name + "[j]);\n" +
                 "            }\n" +
                 "        }\n";
             case LONG_2D_ARRAY ->
-                "        int rows_" + name + " = sc.nextInt();\n" +
-                "        int cols_" + name + " = sc.nextInt();\n" +
+                "        String[] dims_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
+                "        int rows_" + name + " = Integer.parseInt(dims_" + name + "[0]);\n" +
+                "        int cols_" + name + " = Integer.parseInt(dims_" + name + "[1]);\n" +
                 "        long[][] " + name + " = new long[rows_" + name + "][cols_" + name + "];\n" +
                 "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "            String[] row_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
                 "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
-                "                " + name + "[i][j] = sc.nextLong();\n" +
+                "                " + name + "[i][j] = Long.parseLong(row_" + name + "[j]);\n" +
                 "            }\n" +
                 "        }\n";
             case BOOLEAN_2D_ARRAY ->
-                "        int rows_" + name + " = sc.nextInt();\n" +
-                "        int cols_" + name + " = sc.nextInt();\n" +
+                "        String[] dims_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
+                "        int rows_" + name + " = Integer.parseInt(dims_" + name + "[0]);\n" +
+                "        int cols_" + name + " = Integer.parseInt(dims_" + name + "[1]);\n" +
                 "        boolean[][] " + name + " = new boolean[rows_" + name + "][cols_" + name + "];\n" +
                 "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
+                "            String[] row_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
                 "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
-                "                " + name + "[i][j] = sc.nextBoolean();\n" +
+                "                " + name + "[i][j] = Boolean.parseBoolean(row_" + name + "[j]);\n" +
                 "            }\n" +
                 "        }\n";
             case STRING_2D_ARRAY ->
-                "        int rows_" + name + " = sc.nextInt();\n" +
-                "        int cols_" + name + " = sc.nextInt();\n" +
-                "        sc.nextLine();\n" +
+                "        String[] dims_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
+                "        int rows_" + name + " = Integer.parseInt(dims_" + name + "[0]);\n" +
+                "        int cols_" + name + " = Integer.parseInt(dims_" + name + "[1]);\n" +
                 "        String[][] " + name + " = new String[rows_" + name + "][cols_" + name + "];\n" +
                 "        for (int i = 0; i < rows_" + name + "; i++) {\n" +
-                "            String[] row_" + name + " = sc.nextLine().trim().split(\"\\\\s+\");\n" +
+                "            String[] row_" + name + " = br.readLine().trim().split(\"\\\\s+\");\n" +
                 "            for (int j = 0; j < cols_" + name + "; j++) {\n" +
                 "                " + name + "[i][j] = row_" + name + "[j];\n" +
                 "            }\n" +
