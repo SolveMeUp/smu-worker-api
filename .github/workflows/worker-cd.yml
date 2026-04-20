@@ -2,7 +2,7 @@ name: smu-worker CD
 
 on:
   push:
-    branches: ["dev"]
+    branches: ["main", "dev"]
 
 permissions:
   contents: read
@@ -32,7 +32,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/solvemeup/smu-worker:dev
+          tags: ghcr.io/solvemeup/smu-worker-api:dev
 
       - name: Deploy to Home Server (worker)
         env:
