@@ -90,10 +90,18 @@ public class ArgumentConverter {
      *      → ["[2,7,11,15]", "9"]
      */
     public List<String> stdinToArguments(String stdin, List<ParameterSpec> params) {
+        if (stdin == null || stdin.isBlank()) {
+            return new ArrayList<>();
+        }
         Scanner scanner = new Scanner(stdin);
         List<String> result = new ArrayList<>();
-        for (ParameterSpec param : params) {
-            result.add(extractArgFromStdin(scanner, param.type()));
+        try {
+            for (ParameterSpec param : params) {
+                if (!scanner.hasNextLine()) break;
+                result.add(extractArgFromStdin(scanner, param.type()));
+            }
+        } catch (java.util.NoSuchElementException e) {
+            log.warn("stdin에 파라미터 수보다 줄이 부족합니다. 파싱 중단 (params: {})", params.size());
         }
         return result;
     }

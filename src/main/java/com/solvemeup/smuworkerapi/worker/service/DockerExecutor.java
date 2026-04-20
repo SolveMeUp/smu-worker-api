@@ -160,9 +160,9 @@ public class DockerExecutor {
 
             dockerClient.statsCmd(containerId)
                     .withNoStream(true)
-                    .exec(new ResultCallback.Adapter<com.github.dockerjava.api.model.Statistics>() {
+                    .exec(new ResultCallback.Adapter<Statistics>() {
                         @Override
-                        public void onNext(com.github.dockerjava.api.model.Statistics stats) {
+                        public void onNext(Statistics stats) {
                             if (stats.getMemoryStats() != null && stats.getMemoryStats().getUsage() != null) {
                                 int memoryKB = (int) (stats.getMemoryStats().getUsage() / 1024);
                                 memoryFuture.complete(memoryKB);
