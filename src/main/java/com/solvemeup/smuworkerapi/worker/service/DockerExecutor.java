@@ -35,10 +35,13 @@ public class DockerExecutor {
         String containerId = null;
 
         try {
+            long t0 = System.currentTimeMillis();
             containerId = createAndStartContainer(language, executableCode, input, memoryLimitKB);
-            log.debug("Container created: {} for test case {}", containerId.substring(0, 12), testCaseNumber);
+            log.info("[PERF] container create+start: {}ms (testCase {})", System.currentTimeMillis() - t0, testCaseNumber);
 
+            long t1 = System.currentTimeMillis();
             Integer exitCode = waitForContainerWithTimeout(containerId, timeLimitMillis, testCaseNumber);
+            log.info("[PERF] execution wait: {}ms (testCase {})", System.currentTimeMillis() - t1, testCaseNumber);
 
             if (exitCode == null) {
                 long executionTime = System.currentTimeMillis() - startTime;
@@ -53,9 +56,13 @@ public class DockerExecutor {
 
             long executionTime = System.currentTimeMillis() - startTime;
 
+            long t2 = System.currentTimeMillis();
             ContainerOutput containerOutput = collectContainerOutput(containerId);
+            log.info("[PERF] collect output: {}ms (testCase {})", System.currentTimeMillis() - t2, testCaseNumber);
 
+            long t3 = System.currentTimeMillis();
             int memoryUsageKB = getMemoryUsage(containerId, testCaseNumber);
+            log.info("[PERF] memory stats: {}ms (testCase {})", System.currentTimeMillis() - t3, testCaseNumber);
 
             return determineResult(
                     exitCode,
@@ -69,7 +76,9 @@ public class DockerExecutor {
             );
 
         } finally {
+            long t4 = System.currentTimeMillis();
             cleanupContainer(containerId);
+            log.info("[PERF] container cleanup: {}ms", System.currentTimeMillis() - t4);
         }
     }
 
