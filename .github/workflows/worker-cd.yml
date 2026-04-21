@@ -32,7 +32,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/solvemeup/smu-worker-api:dev
+          tags: ghcr.io/solvemeup/smu-worker:dev
 
       - name: Deploy to Home Server (worker)
         env:
