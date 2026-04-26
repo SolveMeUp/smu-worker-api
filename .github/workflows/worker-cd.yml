@@ -39,12 +39,14 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY_B64: ${{ secrets.DEPLOY_SSH_KEY_B64 }}
+          GHCR_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 ${DEPLOY_USER}@${DEPLOY_HOST} << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 ${DEPLOY_USER}@${DEPLOY_HOST} << EOF
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u ghlim00 --password-stdin
             cd /home/solvemeup/deploy
             docker compose pull worker
             docker compose up -d worker
