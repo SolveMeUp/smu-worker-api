@@ -10,9 +10,13 @@ import com.solvemeup.smuworkerapi.worker.enums.JudgeResult;
 import com.solvemeup.smuworkerapi.worker.enums.Language;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.*;
 
@@ -88,7 +92,7 @@ public class DockerExecutor {
             String input,
             int memoryLimitKB
     ) {
-        DockerConfig config = getDockerConfig(language, executableCode, input);
+        DockerConfig config = getDockerConfig(language);
 
         HostConfig hostConfig = HostConfig.newHostConfig()
                 .withMemory((long) memoryLimitKB * 1024)
@@ -100,6 +104,7 @@ public class DockerExecutor {
 
         CreateContainerResponse container = dockerClient.createContainerCmd(config.image)
                 .withCmd(config.command)
+                .withWorkingDir("/workspace")
                 .withHostConfig(hostConfig)
                 .withStdinOpen(true)
                 .withAttachStdin(true)
@@ -108,9 +113,56 @@ public class DockerExecutor {
                 .exec();
 
         String containerId = container.getId();
+        copyExecutionFiles(containerId, config.sourceFile(), executableCode, input);
         dockerClient.startContainerCmd(containerId).exec();
 
         return containerId;
+    }
+
+    private void copyExecutionFiles(
+            String containerId,
+            String sourceFile,
+            String executableCode,
+            String input
+    ) {
+        byte[] archive = createExecutionArchive(
+                sourceFile,
+                executableCode,
+                input
+        );
+        dockerClient.copyArchiveToContainerCmd(containerId)
+                .withRemotePath("/workspace")
+                .withTarInputStream(new ByteArrayInputStream(archive))
+                .exec();
+    }
+
+    byte[] createExecutionArchive(String sourceFile, String executableCode, String input) {
+        return createArchive(
+                new ArchiveFile(sourceFile, executableCode),
+                new ArchiveFile("input.txt", input == null ? "" : input)
+        );
+    }
+
+    private byte[] createArchive(ArchiveFile... files) {
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            try (TarArchiveOutputStream tar = new TarArchiveOutputStream(output)) {
+                tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+                for (ArchiveFile file : files) {
+                    byte[] content = file.content().getBytes(StandardCharsets.UTF_8);
+                    TarArchiveEntry entry = new TarArchiveEntry(file.name());
+                    entry.setSize(content.length);
+                    entry.setMode(0600);
+                    tar.putArchiveEntry(entry);
+                    tar.write(content);
+                    tar.closeArchiveEntry();
+                }
+                tar.finish();
+            }
+            return output.toByteArray();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create container input archive", e);
+        }
     }
 
     private Integer waitForContainerWithTimeout(
@@ -290,40 +342,27 @@ public class DockerExecutor {
         };
     }
 
-    private DockerConfig getDockerConfig(Language language, String code, String input) {
-        String escapedCode = escapeCode(code);
-        String escapedInput = escapeCode(input != null ? input : "");
-
+    private DockerConfig getDockerConfig(Language language) {
         return switch (language) {
             case JAVA -> new DockerConfig(
                     "eclipse-temurin:17-jdk",
+                    "Main.java",
                     new String[]{"sh", "-c",
-                            "echo '" + escapedCode + "' > Main.java && " +
-                                    "javac Main.java 2>&1 && " +
-                                    "echo '" + escapedInput + "' | java Main 2>&1"}
+                            "javac Main.java && java Main < input.txt"}
             );
             case PYTHON -> new DockerConfig(
                     "python:3.11-slim",
+                    "solution.py",
                     new String[]{"sh", "-c",
-                            "echo '" + escapedCode + "' > solution.py && " +
-                                    "echo '" + escapedInput + "' | python solution.py 2>&1"}
+                            "python solution.py < input.txt"}
             );
             case CPP -> new DockerConfig(
                     "gcc:13",
+                    "solution.cpp",
                     new String[]{"sh", "-c",
-                            "echo '" + escapedCode + "' > solution.cpp && " +
-                                    "g++ -o solution solution.cpp 2>&1 && " +
-                                    "echo '" + escapedInput + "' | ./solution 2>&1"}
+                            "g++ -o solution solution.cpp && ./solution < input.txt"}
             );
         };
-    }
-
-    private String escapeCode(String code) {
-        return code
-                .replace("\\", "\\\\")
-                .replace("'", "'\\''")
-                .replace("$", "\\$")
-                .replace("`", "\\`");
     }
 
     public record ExecutionResult(
@@ -334,7 +373,9 @@ public class DockerExecutor {
             int memoryUsageKB
     ) {}
 
-    private record DockerConfig(String image, String[] command) {}
+    private record DockerConfig(String image, String sourceFile, String[] command) {}
+
+    private record ArchiveFile(String name, String content) {}
 
     private record ContainerOutput(String stdout, String stderr) {}
 
