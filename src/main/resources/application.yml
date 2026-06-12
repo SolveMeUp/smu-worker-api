@@ -1,22 +1,22 @@
 server:
-  port: ${WORKER_PORT}
+  port: ${WORKER_PORT:8081}
 
 spring:
   application:
     name: grading-worker
   rabbitmq:
-    host: ${RABBITMQ_HOST}
-    port: ${RABBITMQ_PORT}
-    username: ${RABBITMQ_USERNAME}
-    password: ${RABBITMQ_PASSWORD}
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
     listener:
       simple:
         acknowledge-mode: auto
-        prefetch: ${RABBITMQ_PEFETCH}
+        prefetch: ${RABBITMQ_PEFETCH:1}
 
 judge:
   docker:
-    cleanup-timeout: ${DOCKER_TIMEOUT}
+    cleanup-timeout: ${DOCKER_TIMEOUT:5s}
 
 logging:
   level:

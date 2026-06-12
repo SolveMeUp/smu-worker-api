@@ -16,7 +16,7 @@ import java.util.List;
 @Service
 public class TestCaseLoader {
 
-    @Value("${FILE_BASE_PATH}")
+    @Value("${FILE_BASE_PATH:testcase/problem}")
     private String basePath;
     private int START_NUMBER = 1;
 
