@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * ArgumentConverter 왕복 변환 정확성 검증
  *
- *   argumentsJson
+ *   arguments
  *       → toStdinInput()   → stdin
  *       → stdinToArguments() → arguments
  *
@@ -225,10 +225,10 @@ class ArgumentConverterRoundtripTest {
 
     private void assertRoundtrip(
             List<ParameterSpec> params,
-            String argumentsJson,
+            String arguments,
             List<String> expectedArguments
     ) {
-        String stdin = converter.toStdinInput(argumentsJson, params);
+        String stdin = converter.toStdinInput(arguments, params);
         List<String> result = converter.stdinToArguments(stdin, params);
         assertThat(result).isEqualTo(expectedArguments);
     }

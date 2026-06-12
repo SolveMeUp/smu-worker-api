@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Java 파이프라인 정확성 검증
  *
- * argumentsJson → toStdinInput() → stdin
+ * arguments → toStdinInput() → stdin
  *                                      ↓
  *                     generateExecutableCode() → Java 코드
  *                                      ↓
@@ -309,7 +309,7 @@ class CodeGeneratorJavaTest {
         return new ParameterSpec(name, type);
     }
 
-    /** 단일 파라미터 argumentsJson 생성: argValue → ["argValue"] */
+    /** 단일 파라미터 테스트용 arguments 생성 */
     private String args(String argValue) throws Exception {
         return mapper.writeValueAsString(new String[]{argValue});
     }
@@ -317,9 +317,9 @@ class CodeGeneratorJavaTest {
     private void assertPipeline(
             String userCode, String functionName,
             List<ParameterSpec> params, ValueType returnType,
-            String argumentsJson, String expectedOutput
+            String arguments, String expectedOutput
     ) throws Exception {
-        String stdin = argumentConverter.toStdinInput(argumentsJson, params);
+        String stdin = argumentConverter.toStdinInput(arguments, params);
         String code = codeGenerator.generateExecutableCode(
                 Language.JAVA, userCode, functionName, params, returnType
         );

@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Submit 플로우 정확성 검증
  *
- * JudgeService는 DB의 TestCase.input(stdin 포맷)을 그대로 실행에 사용합니다.
- * argumentsJson → toStdinInput() 변환 없이 stdin을 직접 주입합니다.
+ * SubmissionService는 파일시스템의 TestCase.input(stdin 포맷)을 그대로 실행에 사용합니다.
+ * arguments → toStdinInput() 변환 없이 stdin을 직접 주입합니다.
  *
  *   DB TestCase.input (stdin 포맷)
  *              ↓
