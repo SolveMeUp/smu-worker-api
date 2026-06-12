@@ -2,7 +2,6 @@ package com.solvemeup.smuworkerapi.worker.service;
 
 import com.solvemeup.smuworkerapi.worker.dto.ParameterSpec;
 import com.solvemeup.smuworkerapi.worker.enums.ValueType;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -11,149 +10,199 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
-@Slf4j
 @Service
 public class ArgumentConverter {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /**
-     * argumentsJson (JSON array of arg strings) + parameter specs → stdin string
-     * e.g. argumentsJson="[\"[2,7,11,15]\",\"9\"]", params=[INT_ARRAY, INT]
-     *      → "2 7 11 15\n9"
-     */
-    public String toStdinInput(String argumentsJson, List<ParameterSpec> params) {
+    public String toStdinInput(String arguments, List<ParameterSpec> parameters) {
         try {
-            JsonNode argsNode = objectMapper.readTree(argumentsJson);
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < params.size(); i++) {
-                String arg = argsNode.get(i).asText();
-                ValueType type = params.get(i).type();
-                String stdinLine = convertArgToStdinLines(arg, type);
-                if (i > 0) sb.append("\n");
-                sb.append(stdinLine);
+            JsonNode argumentsNode = objectMapper.readTree(arguments);
+            if (!argumentsNode.isArray() || argumentsNode.size() != parameters.size()) {
+                throw new IllegalArgumentException("arguments must match the parameter count");
             }
-            return sb.toString();
+
+            List<String> blocks = new ArrayList<>();
+            for (int i = 0; i < parameters.size(); i++) {
+                blocks.add(toStdinBlock(argumentsNode.get(i), parameters.get(i).type()));
+            }
+            return String.join("\n", blocks);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to convert argumentsJson to stdin", e);
+            throw new IllegalArgumentException("Failed to convert arguments to stdin", e);
         }
     }
 
-    private String convertArgToStdinLines(String arg, ValueType type) {
-        try {
-            return switch (type) {
-                case INT, LONG, BOOLEAN -> arg;
-                case STRING -> arg;
-                case INT_ARRAY, LONG_ARRAY, BOOLEAN_ARRAY -> {
-                    JsonNode node = objectMapper.readTree(arg);
-                    List<String> elements = new ArrayList<>();
-                    for (JsonNode element : node) {
-                        elements.add(element.asText());
-                    }
-                    yield String.join(" ", elements);
-                }
-                case STRING_ARRAY -> {
-                    JsonNode node = objectMapper.readTree(arg);
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(node.size()).append("\n");
-                    for (int i = 0; i < node.size(); i++) {
-                        if (i > 0) sb.append("\n");
-                        sb.append(node.get(i).asText());
-                    }
-                    yield sb.toString();
-                }
-                case INT_2D_ARRAY, LONG_2D_ARRAY, BOOLEAN_2D_ARRAY, STRING_2D_ARRAY -> {
-                    JsonNode node = objectMapper.readTree(arg);
-                    int rows = node.size();
-                    int cols = rows > 0 ? node.get(0).size() : 0;
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(rows).append(" ").append(cols);
-                    for (int i = 0; i < rows; i++) {
-                        sb.append("\n");
-                        JsonNode row = node.get(i);
-                        for (int j = 0; j < row.size(); j++) {
-                            if (j > 0) sb.append(" ");
-                            sb.append(row.get(j).asText());
-                        }
-                    }
-                    yield sb.toString();
-                }
-            };
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to convert arg for type " + type, e);
+    public String stdinToArgumentsJson(String stdin, List<ParameterSpec> parameters) {
+        if (stdin == null) {
+            return null;
         }
-    }
 
-    /**
-     * stdin string + parameter specs → list of argument strings (for reporting)
-     * e.g. stdin="2 7 11 15\n9", params=[INT_ARRAY, INT]
-     *      → ["[2,7,11,15]", "9"]
-     */
-    public List<String> stdinToArguments(String stdin, List<ParameterSpec> params) {
-        if (stdin == null || stdin.isBlank()) {
-            return new ArrayList<>();
-        }
         Scanner scanner = new Scanner(stdin);
-        List<String> result = new ArrayList<>();
-        try {
-            for (ParameterSpec param : params) {
-                if (!scanner.hasNextLine()) break;
-                result.add(extractArgFromStdin(scanner, param.type()));
-            }
-        } catch (java.util.NoSuchElementException e) {
-            log.warn("stdin에 파라미터 수보다 줄이 부족합니다. 파싱 중단 (params: {})", params.size());
+        List<String> arguments = new ArrayList<>();
+        for (ParameterSpec parameter : parameters) {
+            arguments.add(readJsonArgument(scanner, parameter.type()));
         }
-        return result;
+        return "[" + String.join(",", arguments) + "]";
     }
 
-    private String extractArgFromStdin(Scanner scanner, ValueType type) {
+    List<String> stdinToArguments(String stdin, List<ParameterSpec> parameters) {
+        try {
+            JsonNode arguments = objectMapper.readTree(stdinToArgumentsJson(stdin, parameters));
+            List<String> values = new ArrayList<>();
+            arguments.forEach(value -> values.add(value.isTextual() ? value.asText() : value.toString()));
+            return values;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to convert stdin to arguments", e);
+        }
+    }
+
+    private String toStdinBlock(JsonNode node, ValueType type) {
+        if (node.isTextual() && TypeShape.dimensions(type) > 0) {
+            try {
+                node = objectMapper.readTree(node.asText());
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Array argument must contain valid JSON", e);
+            }
+        }
         return switch (type) {
-            case INT, LONG, BOOLEAN -> {
-                String line = scanner.nextLine().trim();
-                yield line.split("\\s+")[0];
-            }
-            case STRING -> scanner.nextLine().trim();
-            case INT_ARRAY, LONG_ARRAY, BOOLEAN_ARRAY -> {
-                String line = scanner.nextLine().trim();
-                String[] elements = line.split("\\s+");
-                yield "[" + String.join(",", elements) + "]";
-            }
-            case STRING_ARRAY -> {
-                int count = Integer.parseInt(scanner.nextLine().trim());
-                List<String> items = new ArrayList<>();
-                for (int i = 0; i < count; i++) {
-                    items.add("\"" + scanner.nextLine().trim() + "\"");
-                }
-                yield "[" + String.join(",", items) + "]";
-            }
-            case INT_2D_ARRAY, LONG_2D_ARRAY, BOOLEAN_2D_ARRAY -> {
-                String firstLine = scanner.nextLine().trim();
-                String[] dims = firstLine.split("\\s+");
-                int rows = Integer.parseInt(dims[0]);
-                List<String> rowStrings = new ArrayList<>();
-                for (int i = 0; i < rows; i++) {
-                    String rowLine = scanner.nextLine().trim();
-                    String[] elements = rowLine.split("\\s+");
-                    rowStrings.add("[" + String.join(",", elements) + "]");
-                }
-                yield "[" + String.join(",", rowStrings) + "]";
-            }
-            case STRING_2D_ARRAY -> {
-                String firstLine = scanner.nextLine().trim();
-                String[] dims = firstLine.split("\\s+");
-                int rows = Integer.parseInt(dims[0]);
-                List<String> rowStrings = new ArrayList<>();
-                for (int i = 0; i < rows; i++) {
-                    String rowLine = scanner.nextLine().trim();
-                    String[] elements = rowLine.split("\\s+");
-                    List<String> quoted = new ArrayList<>();
-                    for (String e : elements) {
-                        quoted.add("\"" + e + "\"");
-                    }
-                    rowStrings.add("[" + String.join(",", quoted) + "]");
-                }
-                yield "[" + String.join(",", rowStrings) + "]";
-            }
+            case INT, LONG, BOOLEAN, DOUBLE -> node.asText();
+            case CHAR, STRING -> node.asText();
+            case INT_ARRAY, LONG_ARRAY, BOOLEAN_ARRAY, CHAR_ARRAY, DOUBLE_ARRAY ->
+                    joinArray(node);
+            case STRING_ARRAY -> stringArrayToStdin(node);
+            case INT_2D_ARRAY, LONG_2D_ARRAY, BOOLEAN_2D_ARRAY, CHAR_2D_ARRAY,
+                    DOUBLE_2D_ARRAY, STRING_2D_ARRAY -> twoDimensionalArrayToStdin(node);
+            case INT_3D_ARRAY, LONG_3D_ARRAY, BOOLEAN_3D_ARRAY, CHAR_3D_ARRAY,
+                    DOUBLE_3D_ARRAY, STRING_3D_ARRAY -> threeDimensionalArrayToStdin(node);
         };
+    }
+
+    private String joinArray(JsonNode node) {
+        List<String> values = new ArrayList<>();
+        node.forEach(value -> values.add(value.asText()));
+        return String.join(" ", values);
+    }
+
+    private String stringArrayToStdin(JsonNode node) {
+        List<String> lines = new ArrayList<>();
+        lines.add(Integer.toString(node.size()));
+        node.forEach(value -> lines.add(value.asText()));
+        return String.join("\n", lines);
+    }
+
+    private String twoDimensionalArrayToStdin(JsonNode node) {
+        int rows = node.size();
+        int columns = rows == 0 ? 0 : node.get(0).size();
+        List<String> lines = new ArrayList<>();
+        lines.add(rows + " " + columns);
+        node.forEach(row -> lines.add(joinArray(row)));
+        return String.join("\n", lines);
+    }
+
+    private String threeDimensionalArrayToStdin(JsonNode node) {
+        int depth = node.size();
+        int rows = depth == 0 ? 0 : node.get(0).size();
+        int columns = rows == 0 ? 0 : node.get(0).get(0).size();
+        List<String> lines = new ArrayList<>();
+        lines.add(depth + " " + rows + " " + columns);
+        node.forEach(matrix -> matrix.forEach(row -> lines.add(joinArray(row))));
+        return String.join("\n", lines);
+    }
+
+    private String readJsonArgument(Scanner scanner, ValueType type) {
+        return switch (type) {
+            case INT, LONG, BOOLEAN, DOUBLE -> nextLine(scanner);
+            case CHAR, STRING -> quote(nextLine(scanner));
+            case INT_ARRAY, LONG_ARRAY, BOOLEAN_ARRAY, DOUBLE_ARRAY ->
+                    "[" + commaSeparated(nextLine(scanner)) + "]";
+            case CHAR_ARRAY -> quoteArray(nextLine(scanner));
+            case STRING_ARRAY -> readStringArray(scanner);
+            case INT_2D_ARRAY, LONG_2D_ARRAY, BOOLEAN_2D_ARRAY, DOUBLE_2D_ARRAY ->
+                    readTwoDimensionalArray(scanner, false);
+            case CHAR_2D_ARRAY, STRING_2D_ARRAY ->
+                    readTwoDimensionalArray(scanner, true);
+            case INT_3D_ARRAY, LONG_3D_ARRAY, BOOLEAN_3D_ARRAY, DOUBLE_3D_ARRAY ->
+                    readThreeDimensionalArray(scanner, false);
+            case CHAR_3D_ARRAY, STRING_3D_ARRAY ->
+                    readThreeDimensionalArray(scanner, true);
+        };
+    }
+
+    private String readStringArray(Scanner scanner) {
+        int size = Integer.parseInt(nextLine(scanner));
+        List<String> values = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            values.add(quote(nextLine(scanner)));
+        }
+        return "[" + String.join(",", values) + "]";
+    }
+
+    private String readTwoDimensionalArray(Scanner scanner, boolean quoteValues) {
+        String[] dimensions = nextLine(scanner).split("\\s+");
+        int rows = Integer.parseInt(dimensions[0]);
+        List<String> values = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            values.add(arrayLine(nextLine(scanner), quoteValues));
+        }
+        return "[" + String.join(",", values) + "]";
+    }
+
+    private String readThreeDimensionalArray(Scanner scanner, boolean quoteValues) {
+        String[] dimensions = nextLine(scanner).split("\\s+");
+        int depth = Integer.parseInt(dimensions[0]);
+        int rows = Integer.parseInt(dimensions[1]);
+        List<String> matrices = new ArrayList<>();
+        for (int d = 0; d < depth; d++) {
+            List<String> matrix = new ArrayList<>();
+            for (int r = 0; r < rows; r++) {
+                matrix.add(arrayLine(nextLine(scanner), quoteValues));
+            }
+            matrices.add("[" + String.join(",", matrix) + "]");
+        }
+        return "[" + String.join(",", matrices) + "]";
+    }
+
+    private String arrayLine(String line, boolean quoteValues) {
+        if (line.isBlank()) {
+            return "[]";
+        }
+        String[] values = line.trim().split("\\s+");
+        List<String> jsonValues = new ArrayList<>();
+        for (String value : values) {
+            jsonValues.add(quoteValues ? quote(value) : value);
+        }
+        return "[" + String.join(",", jsonValues) + "]";
+    }
+
+    private String quoteArray(String line) {
+        return arrayLine(line, true);
+    }
+
+    private String commaSeparated(String line) {
+        return line.isBlank() ? "" : String.join(",", line.trim().split("\\s+"));
+    }
+
+    private String nextLine(Scanner scanner) {
+        if (!scanner.hasNextLine()) {
+            throw new IllegalArgumentException("stdin does not contain enough values");
+        }
+        return scanner.nextLine().trim();
+    }
+
+    private String quote(String value) {
+        return objectMapper.writeValueAsString(value);
+    }
+
+    private static final class TypeShape {
+        private static int dimensions(ValueType type) {
+            String name = type.name();
+            if (name.endsWith("_3D_ARRAY")) {
+                return 3;
+            }
+            if (name.endsWith("_2D_ARRAY")) {
+                return 2;
+            }
+            return name.endsWith("_ARRAY") ? 1 : 0;
+        }
     }
 }

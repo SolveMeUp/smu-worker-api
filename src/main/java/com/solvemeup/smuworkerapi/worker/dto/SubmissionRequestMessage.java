@@ -6,7 +6,6 @@ import com.solvemeup.smuworkerapi.worker.enums.ValueType;
 import java.util.List;
 
 public record SubmissionRequestMessage(
-        Long submissionResultId,
         Long submissionId,
         Long problemId,
         String functionName,

@@ -5,12 +5,13 @@ import com.solvemeup.smuworkerapi.worker.enums.ValueType;
 
 import java.util.List;
 
-public record RunRequestMessage(
-        Long runId,
+public record ExecutionRequestMessage(
+        Long executionId,
+        Long problemId,
         String functionName,
         List<ParameterSpec> parameters,
         ValueType returnType,
-        List<RunSampleCase> testCases,
+        List<ExecutionTestCase> testCases,
         int timeLimitMillis,
         int memoryLimitKilobytes,
         Language language,
