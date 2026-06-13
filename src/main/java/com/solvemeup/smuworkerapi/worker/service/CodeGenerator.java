@@ -25,6 +25,221 @@ public class CodeGenerator {
         };
     }
 
+    /**
+     * Generates a driver that reads all test cases from one stdin stream and runs the
+     * user function once per case inside a single process (LeetCode-style batch).
+     * Input layout: first line is the case count T, followed by T concatenated case inputs.
+     * For each case the driver prints a boundary line
+     * "{SMU_BOUNDARY} {caseIndex} {OK|RE|TLE} {elapsedMillis}" (flushed) followed by the
+     * case output. Per-case time limit is read from the TIME_LIMIT_MS env var.
+     */
+    public String generateBatchExecutableCode(
+            Language language,
+            String userCode,
+            String functionName,
+            List<ParameterSpec> parameters,
+            ValueType returnType
+    ) {
+        return switch (language) {
+            case JAVA -> generateJavaBatchCode(userCode, functionName, parameters, returnType);
+            case PYTHON -> generatePythonBatchCode(userCode, functionName, parameters, returnType);
+            case CPP -> generateCppBatchCode(userCode, functionName, parameters, returnType);
+        };
+    }
+
+    private String generateJavaBatchCode(
+            String userCode,
+            String functionName,
+            List<ParameterSpec> parameters,
+            ValueType returnType
+    ) {
+        StringBuilder code = new StringBuilder("""
+                import java.io.*;
+                import java.util.*;
+                import java.util.concurrent.*;
+
+                """);
+        code.append(userCode).append("\n\n");
+        code.append("""
+                public class Main {
+                    static final String BOUNDARY = System.getenv("SMU_BOUNDARY") == null ? "" : System.getenv("SMU_BOUNDARY");
+                    static final long TIME_LIMIT_MS = Long.parseLong(System.getenv().getOrDefault("TIME_LIMIT_MS", "2000"));
+                    static final ExecutorService POOL = Executors.newSingleThreadExecutor(r -> {
+                        Thread t = new Thread(r);
+                        t.setDaemon(true);
+                        return t;
+                    });
+
+                    static <R> R __run(Callable<R> task) throws Exception {
+                        Future<R> f = POOL.submit(task);
+                        try {
+                            return f.get(TIME_LIMIT_MS, TimeUnit.MILLISECONDS);
+                        } catch (ExecutionException ee) {
+                            Throwable c = ee.getCause();
+                            if (c instanceof Error er) throw er;
+                            throw (Exception) c;
+                        }
+                    }
+
+                    public static void main(String[] args) throws Exception {
+                        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+                        Solution solution = new Solution();
+                        int __T = Integer.parseInt(br.readLine().trim());
+                        for (int __tc = 0; __tc < __T; __tc++) {
+                """);
+        parameters.forEach(parameter -> code.append(generateJavaParameterParsing(parameter)));
+        code.append("            long __start = System.nanoTime();\n");
+        code.append("            try {\n");
+        code.append("                ").append(javaType(returnType)).append(" result = __run(() -> solution.")
+                .append(functionName).append("(").append(parameterNames(parameters)).append("));\n");
+        code.append("                long __ms = (System.nanoTime() - __start) / 1000000L;\n");
+        code.append("                System.out.println(BOUNDARY + \" \" + __tc + \" OK \" + __ms);\n");
+        code.append(generateJavaOutputCode(returnType));
+        code.append("                System.out.println();\n");
+        code.append("                System.out.flush();\n");
+        code.append("            } catch (TimeoutException __te) {\n");
+        code.append("                System.out.println(BOUNDARY + \" \" + __tc + \" TLE \" + TIME_LIMIT_MS);\n");
+        code.append("                System.out.flush();\n");
+        code.append("                Runtime.getRuntime().halt(0);\n");
+        code.append("            } catch (Throwable __e) {\n");
+        code.append("                long __ms = (System.nanoTime() - __start) / 1000000L;\n");
+        code.append("                System.out.println(BOUNDARY + \" \" + __tc + \" RE \" + __ms);\n");
+        code.append("                System.out.flush();\n");
+        code.append("            }\n");
+        code.append("        }\n");
+        code.append("        System.exit(0);\n");
+        code.append("    }\n}\n");
+        return code.toString();
+    }
+
+    private String generatePythonBatchCode(
+            String userCode,
+            String functionName,
+            List<ParameterSpec> parameters,
+            ValueType returnType
+    ) {
+        String argsTuple = parameters.isEmpty()
+                ? "()"
+                : "(" + parameterNames(parameters) + ",)";
+
+        StringBuilder parsing = new StringBuilder();
+        parameters.forEach(parameter -> parsing.append(generatePythonParameterParsing(parameter)));
+        String parsingBody = parsing.length() == 0
+                ? "        pass\n"
+                : parsing.toString().indent(4);
+        String outputBody = generatePythonOutputCode(TypeShape.from(returnType)).indent(8);
+
+        StringBuilder code = new StringBuilder(userCode).append("\n\n\n");
+        code.append("if __name__ == '__main__':\n");
+        code.append("    import sys, os, signal, time\n\n");
+        code.append("    BOUNDARY = os.environ.get('SMU_BOUNDARY', '')\n");
+        code.append("    TIME_LIMIT_MS = int(os.environ.get('TIME_LIMIT_MS', '2000'))\n\n");
+        code.append("    class _TLE(Exception):\n        pass\n\n");
+        code.append("    def _on_alarm(signum, frame):\n        raise _TLE()\n\n");
+        code.append("    signal.signal(signal.SIGALRM, _on_alarm)\n\n");
+        code.append("    input_lines = sys.stdin.read().splitlines()\n");
+        code.append("    line_idx = 0\n");
+        code.append("    _T = int(input_lines[line_idx]); line_idx += 1\n");
+        code.append("    solution = Solution()\n\n");
+        code.append("    def _parse_case(line_idx):\n");
+        code.append(parsingBody);
+        code.append("        return (line_idx, ").append(argsTuple).append(")\n\n");
+        code.append("    for _tc in range(_T):\n");
+        code.append("        line_idx, _args = _parse_case(line_idx)\n");
+        code.append("        _start = time.perf_counter()\n");
+        code.append("        try:\n");
+        code.append("            signal.setitimer(signal.ITIMER_REAL, TIME_LIMIT_MS / 1000.0)\n");
+        code.append("            result = solution.").append(functionName).append("(*_args)\n");
+        code.append("            signal.setitimer(signal.ITIMER_REAL, 0)\n");
+        code.append("            _ms = int((time.perf_counter() - _start) * 1000)\n");
+        code.append("            print(f\"{BOUNDARY} {_tc} OK {_ms}\")\n");
+        code.append(outputBody);
+        code.append("            print()\n");
+        code.append("            sys.stdout.flush()\n");
+        code.append("        except _TLE:\n");
+        code.append("            print(f\"{BOUNDARY} {_tc} TLE {TIME_LIMIT_MS}\")\n");
+        code.append("            sys.stdout.flush()\n");
+        code.append("            os._exit(0)\n");
+        code.append("        except Exception:\n");
+        code.append("            signal.setitimer(signal.ITIMER_REAL, 0)\n");
+        code.append("            _ms = int((time.perf_counter() - _start) * 1000)\n");
+        code.append("            print(f\"{BOUNDARY} {_tc} RE {_ms}\")\n");
+        code.append("            sys.stdout.flush()\n");
+        return code.toString();
+    }
+
+    private String generateCppBatchCode(
+            String userCode,
+            String functionName,
+            List<ParameterSpec> parameters,
+            ValueType returnType
+    ) {
+        StringBuilder code = new StringBuilder("""
+                #include <iostream>
+                #include <sstream>
+                #include <string>
+                #include <type_traits>
+                #include <vector>
+                #include <csignal>
+                #include <cstdlib>
+                #include <cstring>
+                #include <unistd.h>
+                #include <sys/time.h>
+                #include <chrono>
+                using namespace std;
+
+                """);
+        code.append(userCode).append("\n\n");
+        code.append("""
+                static string __TLE_MSG;
+
+                static void __onAlarm(int) {
+                    ssize_t __n = write(1, __TLE_MSG.c_str(), __TLE_MSG.size());
+                    (void) __n;
+                    _exit(0);
+                }
+
+                int main() {
+                    const char* __b = getenv("SMU_BOUNDARY");
+                    string __BOUNDARY = __b ? string(__b) : string("");
+                    const char* __t = getenv("TIME_LIMIT_MS");
+                    long __LIMIT = __t ? atol(__t) : 2000;
+                    signal(SIGALRM, __onAlarm);
+
+                    Solution solution;
+                    int __T;
+                    if (!(cin >> __T)) return 0;
+                    for (int __tc = 0; __tc < __T; __tc++) {
+                """);
+        parameters.forEach(parameter -> code.append(generateCppParameterParsing(parameter)));
+        code.append("        __TLE_MSG = __BOUNDARY + \" \" + to_string(__tc) + \" TLE \" + to_string(__LIMIT) + \"\\n\";\n");
+        code.append("        auto __start = chrono::steady_clock::now();\n");
+        code.append("        struct itimerval __it; memset(&__it, 0, sizeof(__it));\n");
+        code.append("        __it.it_value.tv_sec = __LIMIT / 1000;\n");
+        code.append("        __it.it_value.tv_usec = (__LIMIT % 1000) * 1000;\n");
+        code.append("        setitimer(ITIMER_REAL, &__it, nullptr);\n");
+        code.append("        try {\n");
+        code.append("            ").append(cppType(returnType)).append(" result = solution.")
+                .append(functionName).append("(").append(parameterNames(parameters)).append(");\n");
+        code.append("            struct itimerval __z; memset(&__z, 0, sizeof(__z));\n");
+        code.append("            setitimer(ITIMER_REAL, &__z, nullptr);\n");
+        code.append("            long long __ms = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - __start).count();\n");
+        code.append("            cout << __BOUNDARY << \" \" << __tc << \" OK \" << __ms << \"\\n\";\n");
+        code.append(generateCppOutputCode(TypeShape.from(returnType)));
+        code.append("            cout << \"\\n\";\n");
+        code.append("            cout.flush();\n");
+        code.append("        } catch (...) {\n");
+        code.append("            struct itimerval __z; memset(&__z, 0, sizeof(__z));\n");
+        code.append("            setitimer(ITIMER_REAL, &__z, nullptr);\n");
+        code.append("            long long __ms = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - __start).count();\n");
+        code.append("            cout << __BOUNDARY << \" \" << __tc << \" RE \" << __ms << \"\\n\";\n");
+        code.append("            cout.flush();\n");
+        code.append("        }\n");
+        code.append("    }\n");
+        code.append("    return 0;\n}\n");
+        return code.toString();
+    }
+
     private String generateJavaCode(
             String userCode,
             String functionName,

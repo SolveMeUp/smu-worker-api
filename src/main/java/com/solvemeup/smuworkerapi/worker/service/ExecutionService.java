@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -25,7 +27,7 @@ public class ExecutionService {
                 request.executionId(), request.problemId(), request.language(), request.testCases().size());
 
         try {
-            String executableCode = codeGenerator.generateExecutableCode(
+            String executableCode = codeGenerator.generateBatchExecutableCode(
                     request.language(),
                     request.sourceCode(),
                     request.functionName(),
@@ -33,39 +35,28 @@ public class ExecutionService {
                     request.returnType()
             );
 
-            boolean ceDetected = false;
+            List<ExecutionTestCase> testCases = request.testCases();
+            List<String> caseInputs = testCases.stream()
+                    .map(testCase -> argumentConverter.toStdinInput(testCase.arguments(), request.parameters()))
+                    .toList();
 
-            for (ExecutionTestCase testCase : request.testCases()) {
-                if (ceDetected) {
-                    resultProducer.sendResult(new ExecutionResultMessage(
-                            request.executionId(),
-                            testCase.caseIndex(),
-                            JudgeResult.CE,
-                            testCase.arguments(),
-                            testCase.expectedOutput(),
-                            null, null, null
-                    ));
-                    continue;
-                }
+            DockerExecutor.BatchExecutionResult batch = dockerExecutor.executeBatch(
+                    request.language(),
+                    executableCode,
+                    caseInputs,
+                    request.timeLimitMillis(),
+                    request.memoryLimitKilobytes()
+            );
 
-                String stdin = argumentConverter.toStdinInput(
-                        testCase.arguments(), request.parameters());
-
-                DockerExecutor.ExecutionResult execResult = dockerExecutor.execute(
-                        request.language(),
-                        executableCode,
-                        stdin,
-                        testCase.caseIndex() + 1,
-                        request.timeLimitMillis(),
-                        request.memoryLimitKilobytes()
-                );
+            for (int i = 0; i < testCases.size(); i++) {
+                ExecutionTestCase testCase = testCases.get(i);
+                DockerExecutor.BatchCaseResult caseResult = batch.cases().get(i);
 
                 log.info("Run case {} executed - status: {}, time: {}ms, memory: {}KB",
-                        testCase.caseIndex(), execResult.status(),
-                        execResult.executionTimeMillis(), execResult.memoryUsageKB());
+                        testCase.caseIndex(), caseResult.status(),
+                        caseResult.executionTimeMillis(), caseResult.memoryUsageKB());
 
-                if (execResult.status() == JudgeResult.CE) {
-                    ceDetected = true;
+                if (caseResult.status() == JudgeResult.CE) {
                     resultProducer.sendResult(new ExecutionResultMessage(
                             request.executionId(),
                             testCase.caseIndex(),
@@ -77,10 +68,10 @@ public class ExecutionService {
                     continue;
                 }
 
-                JudgeResult status = execResult.status();
+                JudgeResult status = caseResult.status();
                 if (status == JudgeResult.AC) {
                     boolean isCorrect = outputComparator.compare(
-                            execResult.output(), testCase.expectedOutput(), request.returnType());
+                            caseResult.output(), testCase.expectedOutput(), request.returnType());
                     status = isCorrect ? JudgeResult.AC : JudgeResult.WA;
                 }
 
@@ -90,9 +81,9 @@ public class ExecutionService {
                         status,
                         testCase.arguments(),
                         testCase.expectedOutput(),
-                        execResult.output(),
-                        execResult.executionTimeMillis(),
-                        execResult.memoryUsageKB()
+                        caseResult.output(),
+                        caseResult.executionTimeMillis(),
+                        caseResult.memoryUsageKB()
                 ));
             }
 
