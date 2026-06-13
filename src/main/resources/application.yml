@@ -13,6 +13,7 @@ spring:
       simple:
         acknowledge-mode: auto
         prefetch: ${RABBITMQ_PEFETCH:1}
+        concurrency: ${RABBITMQ_CONCURRENCY:2}
 
 judge:
   docker:
